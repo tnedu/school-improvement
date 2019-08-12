@@ -1,4 +1,6 @@
-# Create Monthly Data Collection Templates
+# Create one monthly data collection template per district, pre-populated with
+# district and school numbers, school names, and first instructional dates.
+
 # Josh Carson
 
 library(lubridate)
@@ -38,15 +40,10 @@ schools_csi_2019 <-
     "C:/Users/CA20397/SharePoint/School Improvement - Documents/School Lists/school-designations-2018.xlsx",
     sheet = "Comprehensive Support"
   ) %>%
-  # left_join(
-  #   read.xlsx("C:/Users/CA20397/SharePoint/School Improvement - Documents/School Lists/school-designations-2019.xlsx") %>%
-  #     transmute(system, school, designation_2019 = designation),
-  #   by = c("system", "school")
-  # ) %>%
   filter(
     active == "Yes",
-    # !designation_2019 %in% c("Priority Exit", "Reward"),
-    !(system == 600 & school == 110)
+    !(system == 600 & school == 110), # Northfield Academy (adult high school)
+    !(system == 792 & school == 8275) # The Excel Center (adult high school)
   ) %>%
   select(system:school_name) %>%
   rename(school_number = school) %>%
