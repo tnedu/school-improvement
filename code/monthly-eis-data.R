@@ -472,6 +472,8 @@ walk2(
   ~ write_csv(.x, path = str_c("data/", .y, today(), ".csv"))
 )
 
+write_csv(schools_csi, "data/schools-csi.csv")
+
 # Graph ----
 
 schools_csi %>%

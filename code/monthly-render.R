@@ -10,7 +10,7 @@ connection_eis <- connect()
 
 # Set parameters ----
 
-month_for_ytd_filter <- 9
+month_for_ytd_filter <- 8
 
 # Tidy and write data ----
 

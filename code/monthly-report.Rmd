@@ -1,12 +1,13 @@
 ---
 params:
-  district_number: 70
+  district: 70
   district_name: "District Name"
   report_date: !r format(lubridate::today(), "%B %d, %Y")
   data_file_date: !r lubridate::today()
 title: "`r stringr::str_c('Monthly DPSIG/SLIG Data Report for ', params$district_name)`"
 date: "`r params$report_date`"
 output: pdf_document
+classoption: landscape
 ---
 
 ```{r setup, include=FALSE}
@@ -63,9 +64,52 @@ discipline_school <-
           ".csv")
   )
 
-```
-
-```{r}
+schools_csi <- read_csv("data/schools-csi.csv")
 
 ```
 
+```{r graph_1, include=FALSE}
+
+graph_1 <-
+  pmap(
+    .l = list(
+      "data_frames" = list(absence_school, discipline_school),
+      "y_variables" = quos(
+        pct_students_chr_absent_2020_ytd,
+        pct_students_disciplined_2020_ytd
+      ),
+      "y_variables_2" = c(
+        "pct_students_chr_absent_2020_ytd",
+        "pct_students_disciplined_2020_ytd"
+      ),
+      "y_labels" = c("Chronically Absent", "Disciplined"),
+      "fill_colors" = c("red", "orange")
+    ),
+    .f = ~ ..1 %>%
+      left_join(schools_csi, by = c("district", "school")) %>%
+      mutate(
+        school_name = reorder(school_name, !! ..2, max),
+        in_district = district == params$district
+      ) %>%
+      mutate_at(..3, funs(if_else(. == 0, 0.1, .))) %>%
+      ggplot(aes(x = school_name, y = !! ..2)) +
+      geom_col(aes(fill = in_district)) +
+      scale_x_discrete(name = "Each bar represents one CSI school.") +
+      scale_y_continuous(
+        name = str_c("Percent of Students ", ..4, " This Year")
+      ) +
+      scale_fill_manual(
+        name = "School in your district?",
+        labels = c("No", "Yes"),
+        values = c("gray", ..5)
+      ) +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_blank(),
+        legend.position = "top"
+      ) +
+      ggtitle("Your CSI Schools Compared to Other Districts'")
+  ) %>%
+  set_names(nm = c("absence", "discipline"))
+
+```
