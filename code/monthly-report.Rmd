@@ -1,0 +1,71 @@
+---
+params:
+  district_number: 70
+  district_name: "District Name"
+  report_date: !r format(lubridate::today(), "%B %d, %Y")
+  data_file_date: !r lubridate::today()
+title: "`r stringr::str_c('Monthly DPSIG/SLIG Data Report for ', params$district_name)`"
+date: "`r params$report_date`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+
+library(knitr)
+library(gridExtra)
+library(magrittr)
+library(openxlsx)
+library(tidyverse)
+
+directory_onedrive <- "C:/Users/CA20397/OneDrive - TN Dept of Education/"
+directory_project <- "goals/dsi-grant-monitoring/2020-dpsig-slig-monitoring/"
+
+opts_chunk$set(
+  echo = F,
+  # fig.height = 5,
+  # fig.width = 8,
+  message = F,
+  results = "hide",
+  warning = F
+)
+
+opts_knit$set(root.dir = str_c(directory_onedrive, directory_project))
+
+```
+
+```{r data, include=FALSE}
+
+absence_district_month <-
+  read_csv(
+    str_c("data/absence-district-month-",
+          params$data_file_date,
+          ".csv")
+  )
+
+absence_school <-
+  read_csv(
+    str_c("data/absence-school-",
+          params$data_file_date,
+          ".csv")
+  )
+
+discipline_district_month <-
+  read_csv(
+    str_c("data/discipline-district-month-",
+          params$data_file_date,
+          ".csv")
+  )
+
+discipline_school <-
+  read_csv(
+    str_c("data/discipline-school-",
+          params$data_file_date,
+          ".csv")
+  )
+
+```
+
+```{r}
+
+```
+
