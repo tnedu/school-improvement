@@ -1,5 +1,7 @@
 library(DBI)
 library(RJDBC)
+library(ggpubr)
+library(rmarkdown)
 library(lubridate)
 library(magrittr)
 library(openxlsx)
@@ -10,24 +12,25 @@ connection_eis <- connect()
 
 # Set parameters ----
 
-month_for_ytd_filter <- 8
+month_folder <- "09"
+
+month_for_ytd_filter <- 9
 
 # Tidy and write data ----
 
+source("code/schools.R")
 source("code/monthly-eis-data.R")
+
+# Do not source this file. Step through it, and resolve issues as they arise.
+# source("code/monthly-teacher-data.R")
 
 # Render reports ----
 
-districts_csi <-
-  read.xlsx(
-    "C:/Users/CA20397/SharePoint/School Improvement - Documents/School Lists/school-designations-2018.xlsx",
-    sheet = "Comprehensive Support"
-  ) %>%
-  filter(
-    active == "Yes",
-    !(system == 600 & school == 110), # Northfield Academy (adult high school)
-    !(system == 792 & school == 8275) # The Excel Center (adult high school)
-  ) %>%
-  distinct(system) %>%
-  arrange(system) %>%
-  extract2("system")
+render(
+  input = "code/monthly-report.Rmd"
+  # params = list("data_file_date" = "2019-09-04")
+)
+
+# Clean up ----
+
+rm(list = grep("schools_csi|districts_csi|school_ids", ls(), invert = T, value = T))

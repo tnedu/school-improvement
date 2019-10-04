@@ -1,8 +1,6 @@
 # Create one monthly data collection template per district, pre-populated with
 # district and school numbers, school names, and first instructional dates.
 
-# Josh Carson
-
 library(lubridate)
 library(magrittr)
 library(openxlsx)
@@ -37,7 +35,7 @@ first_instructional_dates <-
 
 schools_csi_2019 <-
   read.xlsx(
-    "C:/Users/CA20397/SharePoint/School Improvement - Documents/School Lists/school-designations-2018.xlsx",
+    "C:/Users/CA20397/OneDrive - TN Dept of Education/resources/school-improvement-policy-strategy/school-designations/school-designations-2018.xlsx",
     sheet = "Comprehensive Support"
   ) %>%
   filter(
@@ -88,7 +86,7 @@ output <-
   nest()
 
 template_create <- function(df, system) {
-  file_name <- str_c("output/monthly-templates/monthly-dpsig-data-", system, ".xlsx")
+  file_name <- str_c("data/templates-monthly/monthly-dpsig-data-", system, ".xlsx")
   template <- loadWorkbook(template_blank)
   writeData(template, "Teachers", df, startRow = 2, colNames = F)
   saveWorkbook(template, file_name, overwrite = T)
