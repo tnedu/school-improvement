@@ -141,26 +141,32 @@ temp <-
 graph_line_district <-
   pmap(
     .l = list(
-      "data_frames" = temp,
-      "y_variables_quo" = quos(
+      data_frames = temp,
+      y_variables_quo = quos(
         pct_students_chr_absent,
         pct_students_disciplined,
         pct_students_entered,
         pct_students_exited
       ),
-      "y_variables_chr" = c(
+      y_variables_chr = c(
         "pct_students_chr_absent",
         "pct_students_disciplined",
         "pct_students_entered",
         "pct_students_exited"
       ),
-      "y_labels" = c(
+      y_labels = c(
         "Chronically Absent",
         "Disciplined",
         "Entered",
         "Exited"
       ),
-      "colors" = list(
+      limits = list(
+        c(0, 100),
+        c(0, 50),
+        c(0, 100),
+        c(0, 100)
+      ),
+      colors = list(
         c("skyblue", "red"),
         c("skyblue", "orange"),
         "purple",
@@ -182,9 +188,9 @@ graph_line_district <-
       geom_point(aes(color = measure_name), size = 3) +
       scale_y_continuous(
         name = str_c("Percent of Students ", ..4),
-        limits = c(0, 100) # 1.1 * max(..1[[..3]], na.rm = T))
+        limits = ..5 # c(0, 100) # 1.1 * max(..1[[..3]], na.rm = T))
       ) +
-      scale_color_manual(values = c("gray", ..5)) +
+      scale_color_manual(values = c("gray", ..6)) +
       theme_minimal() +
       theme(
         axis.title.x = element_blank(),
@@ -360,9 +366,19 @@ table_school <-
         "Out-of-School Discipline Rate",
         "Student Mobility"
       ),
-      fill_colors_low = c(rep("blue", 2), "deeppink3"),
-      fill_colors_high = c("red", "orange", "purple"),
-      midpoints = c(rep(median(1:nrow(schools_csi)), 2), 0)
+      fill_colors_low = c(rep("darkseagreen", 2), "deeppink3"),
+      fill_colors_high = c(rep("tomato", 2), "purple"),
+      limits = list(
+        c(1, nrow(schools_csi)),
+        c(1, nrow(schools_csi)),
+        c(-1 * nrow(schools_csi), nrow(schools_csi))
+      ),
+      midpoints = c(rep(median(1:nrow(schools_csi)), 2), 0),
+      fill_descriptions = list(
+        c("green", "red"),
+        c("green", "red"),
+        c("less darkly", "more darkly")
+      )
     ),
     .f = ~ ..1 %>%
       ggplot(aes(x = school_name, y = column_name)) +
@@ -385,7 +401,8 @@ table_school <-
       ) +
       scale_fill_gradient2(
         low = ..3, mid = "gray", high = ..4,
-        midpoint = ..5,
+        limits = ..5,
+        midpoint = ..6,
         na.value = "white"
       ) +
       theme_minimal() +
@@ -398,13 +415,18 @@ table_school <-
         title = str_c(..2, " in Your CSI Schools"),
         caption = str_wrap(
           str_c("School ranks show where schools stand among all 92 CSI schools ",
-                "(1 corresponds to the lowest percent, 92 corresponds to the ",
-                "highest). The 2018-19 Year-to-Date column ",
-                "shows each school's ", ..2, " at this time last year.")
+                "(1 corresponds to the lowest percent and is shaded ", ..7[[1]], ", 92 corresponds to the ",
+                "highest and is shaded ", ..7[[2]], "). The 2018-19 Year-to-Date column ",
+                "shows each school's ", ..2, " at this time last year."),
+          width = 100
         )
       )
   ) %>%
   set_names(nm = c("absence", "discipline", "mobility"))
+
+```
+
+```{r graphs_teacher, include=FALSE, eval=FALSE}
 
 ```
 
@@ -445,7 +467,7 @@ This outcome, Percent of Students Disciplined, is calculated as follows: (number
 The graph below shows year-to-date out-of-school discipline data *pooled across all of your district's CSI schools*, measured at the end of each calendar month.
 
 * The gray line represents last year.
-* The blue line represents Annual Measureable Objectives (AMOs) for this year.
+* The blue line represents Annual Measureable Objectives (AMOs) for this year. (Note: Discipline AMOs are not actually part of state accountability policy. These AMOs here are for informational purposes only.)
 * The orange line represents actual data this year.
 
 ```{r graph_line_district_discipline, fig.height=4}

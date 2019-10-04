@@ -20,7 +20,7 @@ report_month <- "-2019-09"
 
 # Tidy and write data ----
 
-source("code/schools.R")
+# source("code/schools.R")
 source("code/monthly-eis-data.R")
 
 # Do not source this file. Step through it, and resolve issues as they arise.
@@ -54,7 +54,7 @@ render_reports <-
 walk2(
   .x = districts_csi$district, .y = districts_csi$district_name,
   # .x = 985, .y = "Achievement School District",
-  ~ render_reports(.x, .y, data_file_date_arg = "2019-10-02")
+  ~ render_reports(.x, .y)
 )
 
 # Clean up ----
