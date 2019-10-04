@@ -44,9 +44,10 @@ school_ids <- str_c("(", glue::glue_collapse(schools_csi$bu_id, sep = ", "), ")"
 
 districts_csi <-
   schools_csi %>%
-  arrange(district) %>%
-  extract2("district") %>%
-  unique()
+  distinct(district, district_name) %>%
+  arrange(district)
+
+attributes(districts_csi)$spec <- NULL
 
 # Write CSV ----
 

@@ -26,7 +26,7 @@ directory_project <- "goals/dsi-grant-monitoring/2020-dpsig-slig-monitoring/"
 
 opts_chunk$set(
   echo = F,
-  fig.height = 6,
+  fig.height = 7,
   fig.width = 9,
   message = F,
   results = "hide",

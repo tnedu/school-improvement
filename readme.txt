@@ -6,8 +6,9 @@ Consider using each outcome as the fill variable (instead of the school ranks).
 Overview: monthly-render
 
 One-time runs:
-- monthly-templates
-- schools
+- monthly-templates (independent)
+- quarterly-templates (independent)
+- schools (independent)
 
 Monthly runs:
 1) monthly-eis-data
