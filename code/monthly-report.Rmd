@@ -4,6 +4,7 @@ params:
   district_name: "District Name"
   report_date: !r format(lubridate::today(), "%B %d, %Y")
   data_file_date: !r lubridate::today()
+  teacher_file_month: "-2019-09"
 title: "`r paste('Monthly DPSIG/SLIG Data Report for ', params$district_name)`"
 date: "`r params$report_date`"
 output:
@@ -19,6 +20,7 @@ mainfont: Arial
 library(knitr)
 library(ggpubr)
 library(magrittr)
+library(openxlsx)
 library(tidyverse)
 
 directory_onedrive <- "C:/Users/CA20397/OneDrive - TN Dept of Education/"
@@ -209,25 +211,25 @@ graph_line_district <-
 graph_bar_school <-
   pmap(
     .l = list(
-      "data_frames" = list(
+      data_frames = list(
         absence_school,
         discipline_school,
         mobility_school,
         mobility_school
       ),
-      "y_variables_quo" = quos(
+      y_variables_quo = quos(
         pct_students_chr_absent_2020_ytd,
         pct_students_disciplined_2020_ytd,
         pct_students_entered_2020_ytd,
         pct_students_exited_2020_ytd
       ),
-      "y_labels" = c(
+      y_labels = c(
         "Chronically Absent",
         "Disciplined",
         "Entered",
         "Exited"
       ),
-      "fill_colors" = c("red", "orange", "purple", "deeppink3")
+      fill_colors = c("red", "orange", "purple", "deeppink3")
     ),
     .f = ~ ..1 %>%
       left_join(schools_csi, by = c("district", "school")) %>%
