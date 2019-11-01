@@ -1,4 +1,4 @@
-# Import teacher data from districts ----
+# Store variable names from the template ----
 
 variable_names <-
   read.xlsx(
@@ -7,6 +7,8 @@ variable_names <-
   ) %>%
   janitor::clean_names() %>%
   names()
+
+# List file names for the most recent month ----
 
 # The calls to map_at() below will fail if the list is not ordered by district
 # number.
@@ -17,6 +19,8 @@ teacher_last_month <-
     pattern = "monthly-dpsig-data",
     full.names = T
   )
+
+# Import August teacher data ----
 
 if(month_folder == "08") {
   teacher_last_month <-
@@ -61,6 +65,8 @@ if(month_folder == "08") {
     reduce(bind_rows) %>%
     arrange(district_name, school_name)
 }
+
+# Import September teacher data ----
 
 if(month_folder == "09") {
   
@@ -213,8 +219,6 @@ teacher_all_months <-
 template <- loadWorkbook("data/templates-monthly/monthly-data-template-2019-with-district-name.xlsx")
 writeData(template, "Teachers", teacher_all_months, startRow = 2, colNames = F)
 saveWorkbook(template, "data/monthly-dpsig-data-2019.xlsx", overwrite = T)
-
-# Copy data to DSI SharePoint.
 
 file.copy(
   from = str_c("data/", filename),
