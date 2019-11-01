@@ -12,11 +12,11 @@ connection_eis <- connect()
 
 # Set parameters ----
 
-month_folder <- "09"
+month_folder <- "10"
 
-month_for_ytd_filter <- 9
+month_for_ytd_filter <- 10
 
-report_month <- "-2019-09"
+report_month <- "-2019-10"
 
 # Tidy and write data ----
 
