@@ -32,16 +32,16 @@ render_reports <-
   function(
     district_arg,
     district_name_arg,
-    data_file_date_arg = today()
+    data_file_date_arg = today(),
+    teacher_file_month_arg = report_month
   ) {
     render(
       input = "code/monthly-report.Rmd",
-      # output_file = str_c("monthly-dpsig-report-", .x, report_month, ".pdf"),
-      # output_dir = "output",
       params = list(
         district = district_arg,
         district_name = district_name_arg,
-        data_file_date = data_file_date_arg
+        data_file_date = data_file_date_arg,
+        teacher_file_month = teacher_file_month_arg
       )
     )
     file.copy(
