@@ -313,14 +313,62 @@ schools_csi %>%
     by = "district"
   )
 
-# Write teacher data, create year-long teacher table ----
+# Summarize (school, YTD) ----
+
+teacher_school <-
+  map(
+    1:3,
+    ~ teacher_last_month %>%
+      mutate_at(vars(content_area), funs(str_replace(tolower(.), " ", "_"))) %>%
+      filter(content_area %in% c("ela", "math", "science", "social_studies")) %>%
+      transmute(
+        district, school, content_area,
+        n_left = pmax(number_of_teachers_start_of_year - number_of_teachers_persisted_this_year, 0),
+        pct_left = round(100 * n_left / number_of_teachers_start_of_year, 1)
+      )
+  ) %>%
+  map_at(
+    1, ~ .x %>%
+      select(-pct_left) %>%
+      spread(content_area, n_left)
+  ) %>%
+  map_at(
+    2, ~ .x %>%
+      select(-n_left) %>%
+      spread(content_area, pct_left)
+  ) %>%
+  map_at(
+    3, ~ .x %>%
+      group_by(content_area) %>%
+      mutate(school_rank_left = min_rank(pct_left)) %>% # n_distinct(district, school) + 1 - 
+      ungroup() %>%
+      select(district, school, content_area, school_rank_left) %>%
+      spread(content_area, school_rank_left)
+  ) %>%
+  map2(
+    .y = c("n_left", "pct_left", "school_rank_left"),
+    ~ .x %>%
+      rename_at(
+        vars(ela:social_studies),
+        funs(str_c(.y, ., sep = "_"))
+      )
+  ) %>%
+  reduce(left_join, by = c("district", "school"))
+
+# Write data for reports ----
+
+walk2(
+  .x = list(teacher_school),
+  .y = list("teacher-school-"),
+  ~ write_csv(.x, path = str_c("data/", .y, today(), ".csv"))
+)
+
+# Write data for DSI ----
 
 template <- loadWorkbook("data/templates-monthly/monthly-data-template-2019-with-district-name.xlsx")
 filename <- str_c("monthly-dpsig-data-2019-", month_folder, ".xlsx")
 writeData(template, "Teachers", teacher_last_month, startRow = 2, colNames = F)
 saveWorkbook(template, str_c("data/", filename), overwrite = T)
-
-# Create a teacher data frame with all months' data.
 
 teacher_all_months <-
   list.files(
