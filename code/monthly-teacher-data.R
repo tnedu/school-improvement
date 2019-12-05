@@ -13,12 +13,12 @@ variable_names <-
 # The calls to map_at() below will fail if the list is not ordered by district
 # number.
 
-teacher_last_month <-
+(teacher_last_month_paths <-
   list.files(
     path = str_c("data/from-districts-", month_folder),
     pattern = "monthly-dpsig-data",
     full.names = T
-  )
+  ))
 
 # Import August teacher data ----
 
@@ -296,6 +296,114 @@ if(month_folder == "10") {
   
 }
 
+# Import November teacher data ----
+
+if(str_detect(month_folder, "-11$")) {
+  
+  # Check sheet names.
+  (sheet_names <- teacher_last_month %>% map(getSheetNames))
+  
+  # Select sheets to import.
+  (sheet_names <-
+    sheet_names %>%
+    map(~ .x[str_detect(.x, "Teachers|November|Sheet1")]) %>%
+    unlist())
+  
+  # Read data.
+  
+  teacher_last_month_import <-
+    teacher_last_month_paths %>%
+    map2(
+      sheet_names,
+      ~ .x %>%
+        read.xlsx(sheet = .y) %>%
+        janitor::clean_names() %>%
+        mutate_at(vars(first_instructional_date, current_date), convertToDate)
+    )
+  
+  # Check variable names.
+  
+  map(teacher_last_month_import, ~ all(names(.x) == variable_names))
+  all(c("district_number", names(teacher_last_month_import[[2]])) == variable_names)
+  
+  # Check inconsistent variable types.
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_start_of_year))
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_persisted_this_year))
+  unique(teacher_last_month_import[[3]]$number_of_teachers_persisted_this_year)
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_gained_this_year))
+  map(teacher_last_month_import, ~ class(.x$number_of_unendorsed_teachers))
+  map(teacher_last_month_import, ~ class(.x$number_of_long_term_substitutes))
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_chronically_absent))
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teacher_observations))
+  
+  teacher_last_month_import %>%
+    keep(~ is.character(.x$number_of_teacher_observations)) %>%
+    map(~ sort(unique(.x$number_of_teacher_observations)))
+  
+  # Check district and school numbers.
+  # Geeter School in Shelby County should have school number 2245.
+  
+  teacher_last_month_import %>%
+    keep(~ any(str_detect(names(.x), "district_number"))) %>%
+    map(~ summarize_at(.x, vars(district_number), funs(mean(is.na(.)))))
+  
+  map(
+    teacher_last_month_import,
+    ~ summarize_at(.x, vars(school_number), funs(mean(is.na(.))))
+  )
+  
+  teacher_last_month_import %>%
+    keep(~ max(.x[["district_number"]]) == 792) %>%
+    pluck(1) %>%
+    filter(school_number %in% c(2240, 2245)) %>%
+    select(school_number)
+  
+  # Fix issues.
+  
+  teacher_last_month <-
+    teacher_last_month_import %>%
+    map_at(
+      2, ~ .x %>%
+        mutate(district_number = 180) %>%
+        select(district_number, everything())
+    ) %>%
+    map_at(
+      3, ~ .x %>%
+        mutate_at("number_of_teachers_persisted_this_year", as.numeric) %>%
+        mutate_at(
+          "number_of_teacher_observations",
+          funs(
+            str_extract_all(., "\\d+", simplify = T) %>%
+              apply(1:2, as.numeric) %>%
+              rowSums(na.rm = T)
+          )
+        )
+    ) %>%
+    map_at(
+      6, ~ .x %>%
+        mutate(number_of_teacher_observations = NA_real_)
+    ) %>%
+    map_at(
+      8, ~ .x %>%
+        mutate_at(vars(starts_with("num")), as.numeric)
+    ) %>%
+    map(
+      ~ .x %>%
+        mutate_at(vars(district_number, school_number), as.numeric) %>%
+        select(-school_name) %>%
+        rename(district = district_number, school = school_number) %>%
+        inner_join(schools_csi %>% select(-bu_id), by = c("district", "school")) %>%
+        select(district, district_name, school, school_name, everything())
+    ) %>%
+    reduce(bind_rows) %>%
+    arrange(district_name, school_name)
+  
+}
+
 # Check teacher data ----
 
 map(as.list(teacher_last_month), ~ mean(is.na(.x)))
@@ -365,11 +473,13 @@ walk2(
 
 # Write data for DSI ----
 
+# Last month's data
 template <- loadWorkbook("data/templates-monthly/monthly-data-template-2019-with-district-name.xlsx")
-filename <- str_c("monthly-dpsig-data-2019-", month_folder, ".xlsx")
+filename <- str_c("monthly-dpsig-data-", month_folder, ".xlsx")
 writeData(template, "Teachers", teacher_last_month, startRow = 2, colNames = F)
 saveWorkbook(template, str_c("data/", filename), overwrite = T)
 
+# All months' data
 teacher_all_months <-
   list.files(
     path = "data",
