@@ -431,30 +431,30 @@ teacher_school <-
       filter(content_area %in% c("ela", "math", "science", "social_studies")) %>%
       transmute(
         district, school, content_area,
-        n_left = pmax(number_of_teachers_start_of_year - number_of_teachers_persisted_this_year, 0),
-        pct_left = round(100 * n_left / number_of_teachers_start_of_year, 1)
+        n_exited = pmax(number_of_teachers_start_of_year - number_of_teachers_persisted_this_year, 0),
+        pct_exited = round(100 * n_exited / number_of_teachers_start_of_year, 1)
       )
   ) %>%
   map_at(
     1, ~ .x %>%
-      select(-pct_left) %>%
-      spread(content_area, n_left)
+      select(-pct_exited) %>%
+      spread(content_area, n_exited)
   ) %>%
   map_at(
     2, ~ .x %>%
-      select(-n_left) %>%
-      spread(content_area, pct_left)
+      select(-n_exited) %>%
+      spread(content_area, pct_exited)
   ) %>%
   map_at(
     3, ~ .x %>%
       group_by(content_area) %>%
-      mutate(school_rank_left = min_rank(pct_left)) %>% # n_distinct(district, school) + 1 - 
+      mutate(school_rank_exited = min_rank(pct_exited)) %>% # n_distinct(district, school) + 1 - 
       ungroup() %>%
-      select(district, school, content_area, school_rank_left) %>%
-      spread(content_area, school_rank_left)
+      select(district, school, content_area, school_rank_exited) %>%
+      spread(content_area, school_rank_exited)
   ) %>%
   map2(
-    .y = c("n_left", "pct_left", "school_rank_left"),
+    .y = c("n_exited", "pct_exited", "school_rank_exited"),
     ~ .x %>%
       rename_at(
         vars(ela:social_studies),
@@ -463,7 +463,7 @@ teacher_school <-
   ) %>%
   reduce(left_join, by = c("district", "school"))
 
-# Write data for reports ----
+# Write clean data for reports ----
 
 walk2(
   .x = list(teacher_school),
@@ -471,7 +471,7 @@ walk2(
   ~ write_csv(.x, path = str_c("data/", .y, today(), ".csv"))
 )
 
-# Write data for DSI ----
+# Write raw data for DSI ----
 
 # Last month's data
 template <- loadWorkbook("data/templates-monthly/monthly-data-template-2019-with-district-name.xlsx")
