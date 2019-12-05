@@ -448,7 +448,7 @@ teacher_school <-
   map_at(
     3, ~ .x %>%
       group_by(content_area) %>%
-      mutate(school_rank_exited = min_rank(pct_exited)) %>% # n_distinct(district, school) + 1 - 
+      mutate(school_rank_exited = min_rank(pct_exited)) %>%
       ungroup() %>%
       select(district, school, content_area, school_rank_exited) %>%
       spread(content_area, school_rank_exited)

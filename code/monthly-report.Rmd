@@ -1,10 +1,11 @@
 ---
 params:
   district: 792
-  district_name: "District Name"
+  district_name: "Shelby County"
   report_date: !r format(lubridate::today(), "%B %d, %Y")
   data_file_date: !r lubridate::today()
-  teacher_file_month: "-2019-09"
+  teacher_file_date: !r lubridate::today()
+  teacher_file_month: "-2019-11"
 title: "`r paste('Monthly DPSIG/SLIG Data Report for ', params$district_name)`"
 date: "`r params$report_date`"
 output:
@@ -56,11 +57,11 @@ The Division of School Improvement (DSI) will refer to this report in regular ch
     + To what extent has student mobility varied by student group (e.g., Black or African American, English Learners, Male, Students with Disabilities)?
     + Where do students who leave your Priority schools typically go? Where do new students typically come from?
 
-<!-- *	Teachers -->
-<!-- o	What factors have contributed to teacher turnover this month (or the lack thereof)?  -->
-<!-- How do you plan (or have you planned) to address these factors? -->
-<!-- o	What factors have contributed to teacher chronic absenteeism this month (or the lack  -->
-<!-- thereof)? How do you plan (or have you planned) to address these factors? -->
+\newpage
+
+*	Teachers
+    + What factors have contributed to teacher turnover this month (or the lack thereof)? How do you plan (or have you planned) to address these factors?
+    + What factors have contributed to teacher chronic absenteeism this month (or the lack thereof)? How do you plan (or have you planned) to address these factors?
 
 Disclaimer: No graph in this report can predict end-of-year outcomes with 100% accuracy due to a variety of reasons (e.g., changes in business rules, data quality throughout the year). Draw conclusions cautiously.
 \newpage
@@ -115,10 +116,12 @@ month_levels <-
 
 schools_csi <- read_csv("data/schools-csi.csv")
 
-# teacher_last_month <-
-#   read_csv(
-#     str_c()
-#   )
+teacher_school <-
+  read_csv(
+    str_c("data/teacher-school-",
+          params$data_file_date,
+          ".csv")
+  )
 
 ```
 
@@ -190,7 +193,7 @@ graph_line_district <-
       geom_point(aes(color = measure_name), size = 3) +
       scale_y_continuous(
         name = str_c("Percent of Students ", ..4),
-        limits = c(0, pmin(100, 1.25 * max(..1[[..3]], na.rm = T))) # ..5 # c(0, 100)
+        limits = c(0, pmin(100, 1.25 * max(..1[[..3]], na.rm = T)))
       ) +
       scale_color_manual(values = c("gray", ..6)) +
       theme_minimal() +
@@ -244,7 +247,7 @@ graph_bar_school <-
       scale_x_discrete(name = "Each bar represents one CSI school.") +
       scale_y_continuous(
         name = str_c("Percent of Students ", ..3),
-        limits = c(0, pmin(100, 1.25 * max(..1[[quo_name(..2)]], na.rm = T))) # c(0, 100)
+        limits = c(0, pmin(100, 1.25 * max(..1[[quo_name(..2)]], na.rm = T)))
       ) +
       scale_fill_manual(
         name = "School in your district?",
@@ -264,6 +267,45 @@ graph_bar_school <-
 ```
 
 ```{r table_school, include=FALSE}
+
+# List names
+
+list_names <- c("absence", "discipline", "mobility", "teacher_exit_ela_math")
+
+# Captions
+
+fill_descriptions <- list(
+  c("green", "red"),
+  c("green", "red"),
+  c("less darkly", "more darkly"),
+  c("less darkly", "more darkly")
+)
+
+outcome_names <- c(
+  "Chronic Absenteeism",
+  "Out-of-School Discipline Rate",
+  "Student Mobility",
+  "ELA and Math Teacher Exits"
+)
+
+captions <-
+  map2(
+    map(
+      fill_descriptions,
+      ~ str_c("School ranks show where schools stand among all 92 CSI schools ",
+              "(1 corresponds to the lowest percent and is shaded ", .x[[1]], ", 92 corresponds to the ",
+              "highest and is shaded ", .x[[2]], "). ")
+    ),
+    outcome_names %>%
+      map(
+        ~ str_c("The 2018-19 Year-to-Date column ",
+                "shows each school's ", .x, " at this time last year.")
+      ) %>%
+      map_if(~ str_detect(.x, "Teacher Exits"), ~ ""),
+    .f = function(a, b) str_wrap(str_c(a, b), width = 100)
+  )
+
+# Other parameters for map() calls below
 
 columns <-
   list(
@@ -289,6 +331,14 @@ columns <-
       "pct_students_exited_2020_ytd",
       "school_rank_exited_2020_ytd"
     ),
+    levels_teacher_exit_ela_math = c(
+      "n_exited_ela",
+      "pct_exited_ela",
+      "school_rank_exited_ela",
+      "n_exited_math",
+      "pct_exited_math",
+      "school_rank_exited_math"
+    ),
     labels_absence_discipline = c(
       "2018-19 End-of-Year",
       "2018-19 Year-to-Date",
@@ -303,8 +353,23 @@ columns <-
       "2018-19 Year-to-Date Exit Rate",
       "2019-20 Year-to-Date Exit Rate",
       "2019-20 Year-to-Date Rank (Exit Rate)"
+    ),
+    labels_teacher_exit_ela_math = c(
+      "# ELA Teachers Exited Year-to-Date",
+      "% ELA Teachers Exited Year-to-Date",
+      "2019-20 Year-to-Date Rank (ELA %)",
+      "# Math Teachers Exited Year-to-Date",
+      "% Math Teachers Exited Year-to-Date",
+      "2019-20 Year-to-Date Rank (Math %)"
     )
   )
+
+variables_reverse_fill <- c(
+  "school_rank_exited_2020_ytd", # student mobility
+  "school_rank_exited_math" # teacher mobility
+)
+
+# Data frames
 
 temp <-
   pmap(
@@ -312,17 +377,20 @@ temp <-
       data_frames = list(
         absence_school,
         discipline_school,
-        mobility_school
+        mobility_school,
+        teacher_school
       ),
       column_levels = list(
         columns$levels_absence,
         columns$levels_discipline,
-        columns$levels_mobility
+        columns$levels_mobility,
+        columns$levels_teacher_exit_ela_math
       ),
       column_labels = list(
         columns$labels_absence_discipline,
         columns$labels_absence_discipline,
-        columns$labels_mobility
+        columns$labels_mobility,
+        columns$labels_teacher_exit_ela_math
       )
     ),
     .f = ~ ..1 %>%
@@ -339,13 +407,8 @@ temp <-
           str_c(round(cell_value), "%"),
           as.character(cell_value)
         ),
-        # fill_var = if_else(
-        #   str_detect(column_name, "pct"),
-        #   NA_real_,
-        #   cell_value
-        # )
         fill_var = case_when(
-          column_name == "school_rank_exited_2020_ytd" ~ -1 * cell_value,
+          column_name %in% variables_reverse_fill ~ -1 * cell_value,
           str_detect(column_name, "rank") ~ cell_value
         )
       ) %>%
@@ -359,28 +422,24 @@ temp <-
       )
   )
 
+# Tables (ggplot objects)
+
 table_school <-
   pmap(
     .l = list(
       data_frames = temp,
-      outcome_names = c(
-        "Chronic Absenteeism",
-        "Out-of-School Discipline Rate",
-        "Student Mobility"
-      ),
-      fill_colors_low = c(rep("darkseagreen", 2), "deeppink3"),
-      fill_colors_high = c(rep("tomato", 2), "purple"),
+      outcome_names = outcome_names,
+      fill_colors_low = c(rep("darkseagreen", 2), "deeppink3", "cyan3"),
+      fill_colors_high = c(rep("tomato", 2), "purple", "darkorange2"),
       limits = list(
         c(1, nrow(schools_csi)),
         c(1, nrow(schools_csi)),
+        c(-1 * nrow(schools_csi), nrow(schools_csi)),
         c(-1 * nrow(schools_csi), nrow(schools_csi))
       ),
-      midpoints = c(rep(median(1:nrow(schools_csi)), 2), 0),
-      fill_descriptions = list(
-        c("green", "red"),
-        c("green", "red"),
-        c("less darkly", "more darkly")
-      )
+      midpoints = c(rep(median(1:nrow(schools_csi)), 2), 0, 0),
+      captions = captions,
+      font_sizes = c(5, 5, 5, 4)
     ),
     .f = ~ ..1 %>%
       ggplot(aes(x = school_name, y = column_name)) +
@@ -390,11 +449,11 @@ table_school <-
       ) +
       geom_text(
         data = ..1 %>% filter(!str_detect(column_name, "Rank")),
-        aes(label = cell_label), hjust = 1, nudge_y = 0.2, size = 5
+        aes(label = cell_label), hjust = 1, nudge_y = 0.2, size = ..8
       ) +
       geom_text(
         data = ..1 %>% filter(str_detect(column_name, "Rank")),
-        aes(label = cell_label), size = 5
+        aes(label = cell_label), size = ..8
       ) +
       coord_flip() +
       scale_y_discrete(
@@ -402,7 +461,7 @@ table_school <-
         position = "right"
       ) +
       scale_fill_gradient2(
-        low = ..3, mid = "gray", high = ..4,
+        low = ..3, mid = "gray85", high = ..4,
         limits = ..5,
         midpoint = ..6,
         na.value = "white"
@@ -415,20 +474,10 @@ table_school <-
       ) +
       labs(
         title = str_c(..2, " in Your CSI Schools"),
-        caption = str_wrap(
-          str_c("School ranks show where schools stand among all 92 CSI schools ",
-                "(1 corresponds to the lowest percent and is shaded ", ..7[[1]], ", 92 corresponds to the ",
-                "highest and is shaded ", ..7[[2]], "). The 2018-19 Year-to-Date column ",
-                "shows each school's ", ..2, " at this time last year."),
-          width = 100
-        )
+        caption = ..7
       )
   ) %>%
-  set_names(nm = c("absence", "discipline", "mobility"))
-
-```
-
-```{r graphs_teacher, include=FALSE, eval=FALSE}
+  set_names(nm = list_names)
 
 ```
 
@@ -533,4 +582,13 @@ ggarrange(
 
 ```{r table_school_mobility}
 table_school$mobility
+```
+\newpage
+
+# Teacher Mobility
+
+This outcome, ELA and Math Teacher Exits, is calculated as follows: ([number of teachers start-of-year] minus [number of teachers persisted this year]) divided by (number of teachers start-of-year). These calculations are done separately for ELA and Math from the data submitted by your district.
+
+```{r table_school_teacher_exit_ela_math, fig.height=5.5}
+table_school$teacher_exit_ela_math
 ```
