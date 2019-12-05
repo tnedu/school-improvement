@@ -12,11 +12,18 @@ connection_eis <- connect()
 
 # Set parameters ----
 
-month_folder <- "10"
+current_school_year <- 2020
 
-month_for_ytd_filter <- 10
+month_for_ytd_filter <- 11
 
-report_month <- "-2019-10"
+if(month_for_ytd_filter > 7) {
+  if(month_for_ytd_filter < 10) separator <- "-0" else separator <- "-"
+  month_folder <- str_c(current_school_year - 1, separator, month_for_ytd_filter)
+} else {
+  month_folder <- str_c(current_school_year, "-0", month_for_ytd_filter)
+}
+
+report_month <- str_c("-", month_folder)
 
 # Tidy and write data ----
 
