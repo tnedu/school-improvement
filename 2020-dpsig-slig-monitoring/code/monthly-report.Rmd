@@ -24,8 +24,8 @@ library(magrittr)
 library(openxlsx)
 library(tidyverse)
 
-directory_onedrive <- "C:/Users/CA20397/OneDrive - TN Dept of Education/"
-directory_project <- "goals/dsi-grant-monitoring/2020-dpsig-slig-monitoring/"
+directory_onedrive <- "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/"
+directory_project <- "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
 
 opts_chunk$set(
   echo = F,
@@ -270,7 +270,13 @@ graph_bar_school <-
 
 # List names
 
-list_names <- c("absence", "discipline", "mobility", "teacher_exit_ela_math")
+list_names <- c(
+  "absence",
+  "discipline",
+  "mobility",
+  "teacher_exit_ela_math",
+  "teacher_absenteeism"
+)
 
 # Captions
 
@@ -278,14 +284,16 @@ fill_descriptions <- list(
   c("green", "red"),
   c("green", "red"),
   c("less darkly", "more darkly"),
-  c("less darkly", "more darkly")
+  c("less darkly", "more darkly"),
+  c("green", "red")
 )
 
 outcome_names <- c(
   "Chronic Absenteeism",
   "Out-of-School Discipline Rate",
   "Student Mobility",
-  "ELA and Math Teacher Exits"
+  "ELA and Math Teacher Exits",
+  "ELA and Math Teacher Absenteeism"
 )
 
 captions <-
@@ -301,7 +309,7 @@ captions <-
         ~ str_c("The 2018-19 Year-to-Date column ",
                 "shows each school's ", .x, " at this time last year.")
       ) %>%
-      map_if(~ str_detect(.x, "Teacher Exits"), ~ ""),
+      map_if(~ str_detect(.x, "Teacher"), ~ ""),
     .f = function(a, b) str_wrap(str_c(a, b), width = 100)
   )
 
@@ -339,6 +347,14 @@ columns <-
       "pct_exited_math",
       "school_rank_exited_math"
     ),
+    levels_teacher_absenteeism_ela_math = c(
+      "n_chronically_absent_ela",
+      "pct_chronically_absent_ela",
+      "school_rank_chronically_absent_ela",
+      "n_chronically_absent_math",
+      "pct_chronically_absent_math",
+      "school_rank_chronically_absent_math"
+    ),
     labels_absence_discipline = c(
       "2018-19 End-of-Year",
       "2018-19 Year-to-Date",
@@ -361,12 +377,23 @@ columns <-
       "# Math Teachers Exited Year-to-Date",
       "% Math Teachers Exited Year-to-Date",
       "2019-20 Year-to-Date Rank (Math %)"
+    ),
+    labels_teacher_absenteeism_ela_math = c(
+      "# ELA Teachers Chronically Absent Year-to-Date",
+      "% ELA Teachers Chronically Absent Year-to-Date",
+      "2019-20 Year-to-Date Rank (ELA %)",
+      "# Math Teachers Chronically Absent Year-to-Date",
+      "% Math Teachers Chronically Absent Year-to-Date",
+      "2019-20 Year-to-Date Rank (Math %)"
     )
   )
 
+# Reverse-fill the second variable in pairs (e.g., student entrance and exit
+# rates).
+
 variables_reverse_fill <- c(
-  "school_rank_exited_2020_ytd", # student mobility
-  "school_rank_exited_math" # teacher mobility
+  "school_rank_exited_2020_ytd", # paired with student entrance rate
+  "school_rank_exited_math" # paired with ELA exit rate
 )
 
 # Data frames
@@ -378,19 +405,22 @@ temp <-
         absence_school,
         discipline_school,
         mobility_school,
+        teacher_school,
         teacher_school
       ),
       column_levels = list(
         columns$levels_absence,
         columns$levels_discipline,
         columns$levels_mobility,
-        columns$levels_teacher_exit_ela_math
+        columns$levels_teacher_exit_ela_math,
+        columns$levels_teacher_absenteeism_ela_math
       ),
       column_labels = list(
         columns$labels_absence_discipline,
         columns$labels_absence_discipline,
         columns$labels_mobility,
-        columns$labels_teacher_exit_ela_math
+        columns$labels_teacher_exit_ela_math,
+        columns$labels_teacher_absenteeism_ela_math
       )
     ),
     .f = ~ ..1 %>%
@@ -429,17 +459,33 @@ table_school <-
     .l = list(
       data_frames = temp,
       outcome_names = outcome_names,
-      fill_colors_low = c(rep("darkseagreen", 2), "deeppink3", "cyan3"),
-      fill_colors_high = c(rep("tomato", 2), "purple", "darkorange2"),
+      fill_colors_low = c(
+        rep("darkseagreen", 2),
+        "deeppink3",
+        "cyan3",
+        "darkseagreen"
+      ),
+      fill_colors_high = c(
+        rep("tomato", 2),
+        "purple",
+        "darkorange2",
+        "tomato"
+      ),
       limits = list(
         c(1, nrow(schools_csi)),
         c(1, nrow(schools_csi)),
         c(-1 * nrow(schools_csi), nrow(schools_csi)),
-        c(-1 * nrow(schools_csi), nrow(schools_csi))
+        c(-1 * nrow(schools_csi), nrow(schools_csi)),
+        c(1, nrow(schools_csi))
       ),
-      midpoints = c(rep(median(1:nrow(schools_csi)), 2), 0, 0),
+      midpoints = c(
+        rep(median(1:nrow(schools_csi)), 2),
+        0,
+        0,
+        median(1:nrow(schools_csi))
+      ),
       captions = captions,
-      font_sizes = c(5, 5, 5, 4)
+      font_sizes = c(5, 5, 5, 4, 4)
     ),
     .f = ~ ..1 %>%
       ggplot(aes(x = school_name, y = column_name)) +
@@ -478,6 +524,8 @@ table_school <-
       )
   ) %>%
   set_names(nm = list_names)
+
+# walk(table_school, print)
 
 ```
 
