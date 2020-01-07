@@ -14,11 +14,12 @@ connection_eis <- connect()
 
 current_school_year <- 2020
 
-month_for_ytd_filter <- 11
+month_for_ytd_filter <- 12
 
 if(month_for_ytd_filter > 7) {
   if(month_for_ytd_filter < 10) separator <- "-0" else separator <- "-"
   month_folder <- str_c(current_school_year - 1, separator, month_for_ytd_filter)
+  rm(separator)
 } else {
   month_folder <- str_c(current_school_year, "-0", month_for_ytd_filter)
 }

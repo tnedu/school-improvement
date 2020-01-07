@@ -1,3 +1,8 @@
+library(DBI)
+library(magrittr)
+library(openxlsx)
+library(tidyverse)
+
 # Import CSI schools ----
 
 schools_csi <-
@@ -27,9 +32,9 @@ schools_csi <-
   left_join(
     dbGetQuery(
       connection_eis,
-      "select school_bu_id as bu_id, district_no, school_no
-      from school
-      where operational_status = 'A'"
+      "SELECT school_bu_id AS bu_id, district_no, school_no
+      FROM school
+      WHERE operational_status = 'A'"
     ),
     by = c("district" = "DISTRICT_NO", "school" = "SCHOOL_NO")
     ) %>%
