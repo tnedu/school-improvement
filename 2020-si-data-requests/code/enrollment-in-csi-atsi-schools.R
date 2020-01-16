@@ -32,14 +32,27 @@ enrollment <-
 
 schools <-
   read.xlsx("N:/ORP_accountability/data/2019_final_accountability_files/school_designations_file.xlsx") %>%
+  bind_rows(read.xlsx("N:/ORP_accountability/data/2018_final_accountability_files/school_designations_file.xlsx")) %>%
+  mutate_at(
+    vars(designation),
+    funs(
+      case_when(
+        . == "Additional Targeted Support and Improvement" ~ "ATSI 2019",
+        . == "Additional Targeted Support" ~ "ATSI 2018",
+        T ~ .
+      )
+    )
+  ) %>%
   filter(
     designation %in% c(
       "Priority & Comprehensive Support",
       "Comprehensive Support",
       "Priority Exit & Comprehensive Support",
-      "Additional Targeted Support and Improvement"
+      "ATSI 2019",
+      "ATSI 2018"
     )
-  )
+  ) %>%
+  arrange(system_name, school_name, designation)
 
 # Output ----
 
@@ -55,7 +68,7 @@ output <-
   ) %>%
   mutate_at(
     vars(designation),
-    funs(if_else(str_detect(., "Additional"), "ATSI", "Priority or CSI"))
+    funs(if_else(str_detect(., "ATSI"), ., "Priority or CSI"))
   ) %>%
   group_by(system, system_name, designation) %>%
   summarize(n_students_enrolled = n_distinct(student_key)) %>%
