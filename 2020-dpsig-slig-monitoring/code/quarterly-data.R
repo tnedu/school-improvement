@@ -1,12 +1,21 @@
+library(magrittr)
+library(openxlsx)
+library(tidyverse)
+
 # Store variable names from the template ----
 
+domains <- c("Benchmarks", "RTI", "Grades")
+
+template <- "data/templates-quarterly/quarterly-data-template-2019.xlsx"
+
 variable_names <-
-  read.xlsx(
-    "C:/Users/CA20397/SharePoint/School Improvement - Documents/Grant Monitoring/monthly-data-template-2019.xlsx",
-    sheet = "Teachers"
+  map(
+    domains,
+    ~ read.xlsx(template, sheet = .x) %>%
+      janitor::clean_names() %>%
+      names()
   ) %>%
-  janitor::clean_names() %>%
-  names()
+  set_names(nm = tolower(domains))
 
 # List file names for the most recent month ----
 
