@@ -1,7 +1,7 @@
 # Historical Performance of Priority or CSI Schools
 # Josh Carson
 # Requested by Andrea Thorsbakken
-# Last updated 2020-01-23
+# Last updated 2020-01-24
 
 # Provide historical outcome data on Priority or CSI schools for a Strategic
 # Plan report.
@@ -9,6 +9,16 @@
 library(magrittr)
 library(openxlsx)
 library(tidyverse)
+
+connection_eis <-
+  DBI::dbConnect(
+    RJDBC::JDBC(
+      "oracle.jdbc.OracleDriver",
+      classPath = Sys.getenv("jar_path")
+    ),
+    Sys.getenv("eis_connection_string"),
+    "EIS_MGR", Sys.getenv("eis_password")
+  )
 
 # Functions ----
 
@@ -23,13 +33,25 @@ accountability <-
   list(
     sy2019 = "2019_final_accountability_files/school_accountability_file.csv",
     sy2018 = "2018_final_accountability_files/2018_school_accountability_file.csv",
-    sy2017 = "2017_final_accountability_files/school_numeric_2017_JW_10242017.csv"
+    sy2017 = "2017_final_accountability_files/school_base_2017_for_accountability.csv",
+    tvaas_2017 = "2017_tvaas/2017 School Composites.xlsx"
   ) %>%
+  map(~ str_c("N:/ORP_accountability/data/", .x)) %>%
+  map_at(1:3, read_csv) %>%
+  map_at(4, read.xlsx) %>%
   map(
-    ~ str_c("N:/ORP_accountability/data/", .x) %>%
-      read_csv() %>%
+    ~ .x %>%
+      janitor::clean_names() %>%
       strip_attributes()
   )
+
+schools <-
+  DBI::dbGetQuery(
+    connection_eis,
+    "SELECT s.*, d.district_name
+    FROM school s JOIN district d ON s.district_no = d.district_no"
+  ) %>%
+  rename_all(tolower)
 
 schools_priority_2018 <- read.xlsx(
   "N:/ORP_accountability/data/2018_final_accountability_files/school_designations_file.xlsx",
@@ -44,14 +66,6 @@ schools_priority_2015 <-
   janitor::clean_names() %>%
   filter(!is.na(school_number)) %>%
   mutate_at(vars(district_number), as.numeric)
-
-schools_priority_2015_minus_exits <-
-  read_csv("N:/ORP_accountability/projects/2015/2015_school_coding/Output/priority_schools_not_exiting_ap.csv") %>%
-  filter(
-    priority == 1,
-    priority_exit == 0,
-    designation_ineligible_priority == 0
-  )
 
 schools_priority_2012 <-
   read.xlsx("N:/ORP_accountability/data/2012/raw/school_designations_simple2012.xlsx") %>%
@@ -70,7 +84,46 @@ schools_priority_historical <- read.xlsx(
 
 # Explore input ----
 
+n_distinct(schools$district_no, schools$school_no)
+
+# Over 80% of 2012 Priority schools were in Memphis (district 791).
+
 count(schools_priority_2012, district_number, sort = T)
+
+# Does schools_priority_historical (created July 2018) include 2018 Priority
+# schools? No, only half of 2018 Priority schools are included in the
+# historical list. For the 41 schools not included, we do not have former
+# district or school numbers (where applicable).
+
+schools_priority_historical %>%
+  transmute(
+    system,
+    school,
+    in_historical = T
+  ) %>%
+  full_join(
+    schools_priority_2018 %>%
+      transmute(
+        system,
+        school,
+        in_2018 = T
+      )
+  ) %>%
+  count(in_historical, in_2018)
+
+# The 2017 numeric file has a very different layout from the 2018 and 2019
+# accountability files.
+
+count(accountability$sy2017, year)
+count(accountability$sy2017, subject)
+count(accountability$sy2017, subgroup)
+count(accountability$sy2017, grade)
+View(count(accountability$sy2017, subject, grade))
+
+summary(accountability$sy2017$valid_tests)
+mean(accountability$sy2017$valid_tests < 30, na.rm = T)
+
+accountability$sy2017 %>% summarize(n_schools = n_distinct(system, school))
 
 # Shelby County ID crosswalk ----
 
@@ -129,32 +182,6 @@ crosswalk_shelby <-
 # needed. It will also help determine if grouping schools by number of times
 # identified would be helpful.
 
-# schools_priority <-
-#   schools_priority_2018 %>%
-#   select(system, system_name, school, school_name) %>%
-#   full_join(
-#     schools_priority_2015 %>%
-#       select(
-#         system = district_number,
-#         system_name = district,
-#         school = school_number,
-#         school_name = school
-#       ),
-#     by = c("system", "school"),
-#     suffix = c("", "_2015")
-#   ) %>%
-#   full_join(
-#     schools_priority_2012 %>%
-#       select(
-#         system = district_number,
-#         system_name = district,
-#         school = school_number,
-#         school_name = school
-#       ),
-#     by = c("system", "school"),
-#     suffix = c("", "_2012")
-#   )
-
 schools_priority <-
   schools_priority_2018 %>%
   transmute(
@@ -169,6 +196,11 @@ schools_priority <-
         school = school_number,
         year = "identified_2015"
       )
+      # left_join(
+      #   crosswalk_id,
+      #   by = c("system" = "system_old", "school" = "school_old"),
+      #   suffix = c("", "_y")
+      # )
   ) %>%
   bind_rows(
     schools_priority_2012 %>%
@@ -240,4 +272,467 @@ View(
       # Add more conditions here to deal with NA.
       # Does schools_priority_historical actually list 2018 Priority schools?
     )
+)
+
+# Success Rate ----
+
+eoc_english <- c("English I", "English II", "English III")
+
+eoc_math <- c(
+  "Algebra I",
+  "Algebra II",
+  "Geometry",
+  "Integrated Math I",
+  "Integrated Math II",
+  "Integrated Math III"
+)
+
+eoc_science <- c("Biology I", "Chemistry")
+
+success_rate <-
+  accountability[c("sy2019", "sy2018", "sy2017")] %>%
+  map_at(
+    c("sy2019", "sy2018"),
+    ~ .x %>%
+      filter(indicator == "Achievement", subgroup == "All Students") %>%
+      transmute(
+        system,
+        school,
+        test_year = 2019,
+        n_otm = round(n_count * metric / 100),
+        n_valid_tests = n_count
+      )
+  ) %>%
+  map_at("sy2018", ~ mutate(.x, test_year = 2018)) %>%
+  map_at(
+    "sy2017",
+    ~ .x %>%
+      filter(
+        # Ignore 2016 data for now due to testing misadministrations that year.
+        year == 2017,
+        subject %in% c(
+          "ELA", "Math", "Science",
+          eoc_english, eoc_math, eoc_science
+        ),
+        subgroup == "All Students",
+        !grade %in% c("All Grades", "Missing Grade")
+      ) %>%
+      mutate(
+        grade_below_9 = !is.na(as.numeric(grade)) & as.numeric(grade) < 9,
+        n_otm = n_on_track + n_mastered
+      ) %>%
+      mutate_at(
+        vars(subject),
+        funs(
+          case_when(
+            . %in% eoc_english & grade_below_9 ~ "ELA",
+            . %in% eoc_math & grade_below_9 ~ "Math",
+            . %in% eoc_science & grade_below_9 ~ "Science",
+            T ~ .
+          )
+        )
+      ) %>%
+      group_by(system, school, year, subject) %>%
+      summarize_at(vars(n_otm, valid_tests), sum, na.rm = T) %>%
+      filter(valid_tests >= 30) %>%
+      summarize_at(vars(n_otm, valid_tests), sum, na.rm = T) %>%
+      ungroup() %>%
+      rename(test_year = year, n_valid_tests = valid_tests)
+  ) %>%
+  reduce(bind_rows) %>%
+  mutate(success_rate = round(100 * n_otm / n_valid_tests, 1)) %>%
+  arrange(system, school, test_year) %>%
+  left_join(
+    schools_priority_historical %>%
+      select(
+        system,
+        school,
+        system_alt = system_old,
+        school_alt = school_old
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_historical %>%
+      select(
+        system_alt_2 = system,
+        school_alt_2 = school,
+        system_alt = system_old,
+        school_alt = school_old
+      ),
+    by = c("system" = "system_alt", "school" = "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2018 %>%
+      transmute(
+        system,
+        school,
+        identified_2018 = T
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_2018 %>%
+      transmute(
+        system_alt = system,
+        school_alt = school,
+        identified_2018_alt = T
+      ),
+    by = c("system_alt", "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2018 %>%
+      transmute(
+        system_alt_2 = system,
+        school_alt_2 = school,
+        identified_2018_alt_2 = T
+      ),
+    by = c("system_alt_2", "school_alt_2")
+  ) %>%
+  left_join(
+    schools_priority_2015 %>%
+      transmute(
+        system = district_number,
+        school = school_number,
+        identified_2015 = T
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_2015 %>%
+      transmute(
+        system_alt = district_number,
+        school_alt = school_number,
+        identified_2015_alt = T
+      ),
+    by = c("system_alt", "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2015 %>%
+      transmute(
+        system_alt_2 = district_number,
+        school_alt_2 = school_number,
+        identified_2015_alt_2 = T
+      ),
+    by = c("system_alt_2", "school_alt_2")
+  ) %>%
+  left_join(
+    schools_priority_2012 %>%
+      transmute(
+        system = if_else(
+          district_number == 791,
+          792,
+          district_number
+        ),
+        school = if_else(
+          district_number == 791 & school_number < 2000,
+          school_number + 2000,
+          school_number
+        ),
+        identified_2012 = T
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_2012 %>%
+      transmute(
+        system_alt = if_else(
+          district_number == 791,
+          792,
+          district_number
+        ),
+        school_alt = if_else(
+          district_number == 791 & school_number < 2000,
+          school_number + 2000,
+          school_number
+        ),
+        identified_2012_alt = T
+      ),
+    by = c("system_alt", "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2012 %>%
+      transmute(
+        system_alt_2 = if_else(
+          district_number == 791,
+          792,
+          district_number
+        ),
+        school_alt_2 = if_else(
+          district_number == 791 & school_number < 2000,
+          school_number + 2000,
+          school_number
+        ),
+        identified_2012_alt_2 = T
+      ),
+    by = c("system_alt_2", "school_alt_2")
+  ) %>%
+  mutate(
+    identified_2012 = identified_2012 | identified_2012_alt | identified_2012_alt_2,
+    identified_2015 = identified_2015 | identified_2015_alt | identified_2015_alt_2,
+    identified_2018 = identified_2018 | identified_2018_alt | identified_2018_alt_2
+  ) %>%
+  left_join(
+    schools %>%
+      select(
+        system = district_no,
+        system_name = district_name,
+        school = school_no,
+        school_name
+      ),
+    by = c("system", "school")
+  ) %>%
+  select(
+    system, system_name, school, school_name, test_year,
+    identified_2012, identified_2015, identified_2018,
+    n_otm, n_valid_tests, success_rate
+  ) %>%
+  arrange(system_name, school_name, test_year)
+
+success_rate_summary <-
+  success_rate %>%
+  gather(
+    identification, identified,
+    identified_2012, identified_2015, identified_2018
+  ) %>%
+  group_by(system, school) %>%
+  mutate(
+    never_identified = mean(is.na(identified)) == 1,
+    identification = if_else(
+      never_identified,
+      "Never Priority",
+      str_c(str_replace(identification, "identified_", ""), " Priority")
+    )
+  ) %>%
+  ungroup() %>%
+  distinct(system, school, test_year, identification, .keep_all = T) %>%
+  arrange(system, school, test_year, identification) %>%
+  filter(identification == "Never Priority" | !is.na(identified)) %>%
+  # Any school identified multiple times is counted once for each
+  # year in which the school was identified.
+  group_by(test_year, identification) %>%
+  summarize(
+    n_schools = n_distinct(system, school),
+    n_otm = sum(n_otm, na.rm = T),
+    n_valid_tests = sum(n_valid_tests)
+  ) %>%
+  ungroup() %>%
+  mutate(success_rate = round(100 * n_otm / n_valid_tests, 1))
+
+# TVAAS ----
+
+tvaas <-
+  accountability[c("sy2019", "sy2018", "tvaas_2017")] %>%
+  map_at(
+    c("sy2019", "sy2018"),
+    ~ .x %>%
+      filter(indicator == "Growth", subgroup == "All Students") %>%
+      transmute(
+        system,
+        school,
+        test_year = 2019,
+        tvaas = metric
+      )
+  ) %>%
+  map_at("sy2018", ~ mutate(.x, test_year = 2018)) %>%
+  map_at(
+    "tvaas_2017",
+    ~ .x %>%
+      transmute(
+        system = as.numeric(district_number),
+        school = as.numeric(school_number),
+        test_year = 2017,
+        tvaas = school_wide_composite
+      )
+  ) %>%
+  reduce(bind_rows) %>%
+  arrange(system, school, test_year) %>%
+  left_join(
+    schools_priority_historical %>%
+      select(
+        system,
+        school,
+        system_alt = system_old,
+        school_alt = school_old
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_historical %>%
+      select(
+        system_alt_2 = system,
+        school_alt_2 = school,
+        system_alt = system_old,
+        school_alt = school_old
+      ),
+    by = c("system" = "system_alt", "school" = "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2018 %>%
+      transmute(
+        system,
+        school,
+        identified_2018 = T
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_2018 %>%
+      transmute(
+        system_alt = system,
+        school_alt = school,
+        identified_2018_alt = T
+      ),
+    by = c("system_alt", "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2018 %>%
+      transmute(
+        system_alt_2 = system,
+        school_alt_2 = school,
+        identified_2018_alt_2 = T
+      ),
+    by = c("system_alt_2", "school_alt_2")
+  ) %>%
+  left_join(
+    schools_priority_2015 %>%
+      transmute(
+        system = district_number,
+        school = school_number,
+        identified_2015 = T
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_2015 %>%
+      transmute(
+        system_alt = district_number,
+        school_alt = school_number,
+        identified_2015_alt = T
+      ),
+    by = c("system_alt", "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2015 %>%
+      transmute(
+        system_alt_2 = district_number,
+        school_alt_2 = school_number,
+        identified_2015_alt_2 = T
+      ),
+    by = c("system_alt_2", "school_alt_2")
+  ) %>%
+  left_join(
+    schools_priority_2012 %>%
+      transmute(
+        system = if_else(
+          district_number == 791,
+          792,
+          district_number
+        ),
+        school = if_else(
+          district_number == 791 & school_number < 2000,
+          school_number + 2000,
+          school_number
+        ),
+        identified_2012 = T
+      ),
+    by = c("system", "school")
+  ) %>%
+  left_join(
+    schools_priority_2012 %>%
+      transmute(
+        system_alt = if_else(
+          district_number == 791,
+          792,
+          district_number
+        ),
+        school_alt = if_else(
+          district_number == 791 & school_number < 2000,
+          school_number + 2000,
+          school_number
+        ),
+        identified_2012_alt = T
+      ),
+    by = c("system_alt", "school_alt")
+  ) %>%
+  left_join(
+    schools_priority_2012 %>%
+      transmute(
+        system_alt_2 = if_else(
+          district_number == 791,
+          792,
+          district_number
+        ),
+        school_alt_2 = if_else(
+          district_number == 791 & school_number < 2000,
+          school_number + 2000,
+          school_number
+        ),
+        identified_2012_alt_2 = T
+      ),
+    by = c("system_alt_2", "school_alt_2")
+  ) %>%
+  mutate(
+    identified_2012 = identified_2012 | identified_2012_alt | identified_2012_alt_2,
+    identified_2015 = identified_2015 | identified_2015_alt | identified_2015_alt_2,
+    identified_2018 = identified_2018 | identified_2018_alt | identified_2018_alt_2
+  ) %>%
+  left_join(
+    schools %>%
+      select(
+        system = district_no,
+        system_name = district_name,
+        school = school_no,
+        school_name
+      ),
+    by = c("system", "school")
+  ) %>%
+  select(
+    system, system_name, school, school_name, test_year,
+    identified_2012, identified_2015, identified_2018,
+    tvaas
+  ) %>%
+  arrange(system_name, school_name, test_year)
+
+tvaas_summary <-
+  tvaas %>%
+  gather(
+    identification, identified,
+    identified_2012, identified_2015, identified_2018
+  ) %>%
+  group_by(system, school) %>%
+  mutate(
+    never_identified = mean(is.na(identified)) == 1,
+    identification = if_else(
+      never_identified,
+      "Never Priority",
+      str_c(str_replace(identification, "identified_", ""), " Priority")
+    )
+  ) %>%
+  ungroup() %>%
+  distinct(system, school, test_year, identification, .keep_all = T) %>%
+  arrange(system, school, test_year, identification) %>%
+  filter(identification == "Never Priority" | !is.na(identified)) %>%
+  # Any school identified multiple times is counted once for each
+  # year in which the school was identified.
+  group_by(test_year, identification) %>%
+  summarize(
+    n_schools_4_or_5 = sum(!is.na(tvaas) & tvaas > 3),
+    n_schools = n()
+  ) %>%
+  ungroup() %>%
+  mutate(pct_schools_4_or_5 = round(100 * n_schools_4_or_5 / n_schools, 1))
+
+# Output ----
+
+write.xlsx(
+  list(
+    success_rate = success_rate,
+    sr_summary = success_rate_summary,
+    tvaas = tvaas,
+    tvaas_summary = tvaas_summary
+  ),
+  "data/priority-historical-performance.xlsx",
+  colWidths = "auto",
+  overwrite = T
 )
