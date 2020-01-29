@@ -1,5 +1,6 @@
 ---
 params:
+  directory_project: ""
   district: 792
   district_name: "Shelby County"
   report_date: !r format(lubridate::today(), "%B %d, %Y")
@@ -24,8 +25,17 @@ library(magrittr)
 library(openxlsx)
 library(tidyverse)
 
-directory_onedrive <- "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/"
-directory_project <- "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
+if(params$directory_project == "") {
+  directory_project <- str_c(
+    "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/",
+    "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
+  )
+} else {
+  directory_project <- params$directory_project
+}
+
+# directory_onedrive <- "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/"
+# directory_project <- "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
 
 opts_chunk$set(
   echo = F,
@@ -36,7 +46,8 @@ opts_chunk$set(
   warning = F
 )
 
-opts_knit$set(root.dir = str_c(directory_onedrive, directory_project))
+# opts_knit$set(root.dir = str_c(directory_onedrive, directory_project))
+opts_knit$set(root.dir = directory_project)
 
 ```
 

@@ -1,3 +1,13 @@
+library(lubridate)
+library(magrittr)
+library(openxlsx)
+library(sida)
+library(tidyverse)
+
+# List school numbers ----
+
+if(!exists("school_ids")) source("code/schools.R")
+
 # Query school calendars ----
 
 calendar <-

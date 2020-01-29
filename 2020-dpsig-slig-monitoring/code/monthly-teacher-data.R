@@ -7,7 +7,7 @@ library(tidyverse)
 
 variable_names <-
   read.xlsx(
-    "data/templates-monthly/monthly-data-template-2019.xlsx",
+    str_c(tnshare_path, "data/templates-monthly/monthly-data-template-2019.xlsx"),
     sheet = "Teachers"
   ) %>%
   janitor::clean_names() %>%
@@ -20,7 +20,7 @@ variable_names <-
 
 (teacher_last_month_paths <-
   list.files(
-    path = str_c("data/from-districts-", month_folder),
+    path = str_c(tnshare_path, "data/from-districts-", month_folder),
     pattern = "monthly-dpsig-data",
     full.names = T
   ))
