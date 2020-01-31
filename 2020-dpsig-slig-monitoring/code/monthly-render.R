@@ -5,7 +5,6 @@ library(rmarkdown)
 library(lubridate)
 library(magrittr)
 library(openxlsx)
-# library(sida)
 library(tidyverse)
 
 connection_eis <-
@@ -24,7 +23,7 @@ current_school_year <- 2020
 
 directory_current <- getwd()
 
-directory_tnshare <- str_c(
+directory_master <- str_c(
   Sys.getenv("tnshare_data_use"), "/",
   "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
 )
@@ -43,8 +42,8 @@ report_month <- str_c("-", month_folder)
 
 # Tidy and write data ----
 
-source("code/monthly-eis-data.R")
 file.edit("code/monthly-teacher-data.R")
+source("code/monthly-eis-data.R")
 
 # Render reports ----
 
@@ -77,9 +76,12 @@ render_reports <-
   }
 
 walk2(
-  .x = districts_csi$district, .y = districts_csi$district_name,
-  ~ render_reports(.x, .y)
+  .x = c(districts_csi$district, 0),
+  .y = c(districts_csi$district_name, "State-Level Users"),
+  ~ render_reports(.x, .y, data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
 )
+
+render_reports(0, "State-Level Users", data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
 
 # Clean up ----
 
