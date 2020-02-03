@@ -28,7 +28,7 @@ directory_master <- str_c(
   "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
 )
 
-month_for_ytd_filter <- 12
+month_for_ytd_filter <- 1
 
 if(month_for_ytd_filter > 7) {
   if(month_for_ytd_filter < 10) separator <- "-0" else separator <- "-"
@@ -78,10 +78,10 @@ render_reports <-
 walk2(
   .x = c(districts_csi$district, 0),
   .y = c(districts_csi$district_name, "State-Level Users"),
-  ~ render_reports(.x, .y, data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
+  ~ render_reports(.x, .y) # , data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
 )
 
-render_reports(0, "State-Level Users", data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
+# render_reports(0, "State-Level Users", data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
 
 # Clean up ----
 
