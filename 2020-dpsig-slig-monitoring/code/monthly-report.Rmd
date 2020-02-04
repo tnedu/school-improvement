@@ -2,10 +2,10 @@
 params:
   district: 0
   district_name: "State-Level Users"
-  data_file_date: "2020-01-29" # !r lubridate::today()
+  data_file_date: !r lubridate::today()
   directory_project: ""
   report_date: !r format(lubridate::today(), "%B %d, %Y")
-  teacher_file_date: "2019-01-29" # !r lubridate::today()
+  teacher_file_date: !r lubridate::today()
   teacher_file_month: "-2019-12"
 title: "`r paste('Monthly DPSIG/SLIG Data Report for ', params$district_name)`"
 date: "`r params$report_date`"
@@ -140,7 +140,7 @@ schools_csi <- read_csv("data/schools-csi.csv")
 teacher_school <-
   read_csv(
     str_c("data/teacher-school-",
-          params$data_file_date,
+          params$teacher_file_date,
           ".csv")
   )
 
@@ -1130,7 +1130,8 @@ if(params$district > 0) {
       labs(subtitle = "Student Entrance Rate"),
     graph_line_state$mobility_exit +
       labs(subtitle = "Student Exit Rate"),
-    ncol = 2, nrow = 1
+    ncol = 2, nrow = 1,
+    common.legend = T
   )
 }
 

@@ -618,36 +618,36 @@ if(str_detect(month_folder, "-01$")) {
   teacher_last_month <-
     teacher_last_month_import %>%
     map_at(
-      1, ~ .x %>% # 2
+      2, ~ .x %>%
         mutate(district_number = 180) %>%
         select(district_number, everything())
     ) %>%
-    # map_at(
-    #   3, ~ .x %>%
-    #     mutate_at(
-    #       vars(matches("teachers|substitutes")),
-    #       as.numeric
-    #     ) %>%
-    #     mutate_at(
-    #       "number_of_teacher_observations",
-    #       funs(
-    #         str_extract_all(., "\\d+", simplify = T) %>%
-    #           apply(1:2, as.numeric) %>%
-    #           rowSums(na.rm = T)
-    #       )
-    #     )
-    # ) %>%
+    map_at(
+      3, ~ .x %>%
+        mutate_at(
+          vars(matches("teachers|substitutes")),
+          as.numeric
+        ) %>%
+        mutate_at(
+          "number_of_teacher_observations",
+          funs(
+            str_extract_all(., "\\d+", simplify = T) %>%
+              apply(1:2, as.numeric) %>%
+              rowSums(na.rm = T)
+          )
+        )
+    ) %>%
     # map_at(
     #   6, ~ .x %>%
     #     mutate(number_of_teacher_observations = NA_real_)
     # ) %>%
-    # map_at(
-    #   8, ~ .x %>%
-    #     filter(!is.na(school_number)) %>%
-    #     mutate_at(vars(starts_with("num")), as.numeric) %>%
-    #     mutate(district_number = 792)
-    # ) %>%
-    map_at(5, ~ .x %>% select(-x14)) %>% # 9
+    map_at(
+      8, ~ .x %>%
+        filter(!is.na(school_number)) %>%
+        mutate_at(vars(starts_with("num")), as.numeric) %>%
+        mutate(district_number = 792)
+    ) %>%
+    map_at(9, ~ .x %>% select(-x14)) %>%
     map(
       ~ .x %>%
         mutate_at(vars(district_number, school_number), as.numeric) %>%
