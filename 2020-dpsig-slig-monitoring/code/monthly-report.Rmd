@@ -144,6 +144,28 @@ teacher_school <-
           ".csv")
   )
 
+if(params$district == 0) {
+  tvaas_school <-
+    list(
+      sy2019 = "N:/ORP_accountability/data/2019_tvaas/SAS-NIET School-Wide.xlsx",
+      sy2018 = "N:/ORP_accountability/data/2018_tvaas/School Composite Level.xlsx",
+      sy2017 = "N:/ORP_accountability/data/2017_tvaas/2017 School Composites.xlsx"
+    ) %>%
+    imap(
+      ~ .x %>%
+        read.xlsx() %>%
+        janitor::clean_names() %>%
+        transmute(
+          district = as.numeric(district_number),
+          school = as.numeric(school_number),
+          year = str_extract_all(.y, "\\d+", simplify = T),
+          tvaas_literacy_numeracy = school_wide_literacy_and_numeracy
+        )
+    ) %>%
+    reduce(bind_rows) %>%
+    arrange(district, school, year)
+}
+
 ```
 
 ```{r district_colors, include=FALSE}
@@ -849,6 +871,201 @@ table_school <-
   )
 
 # walk(table_school$`190`, print)
+
+```
+
+```{r table_school_3_year, include=FALSE}
+
+if(params$district == 0) {
+  
+  temp <-
+    list(
+      # tvaas = tvaas_school,
+      absence = absence_school,
+      discipline = discipline_school
+    ) %>%
+    map2(
+      # .y = quos(
+      #   pct_students_chr_absent,
+      #   pct_students_disciplined
+      # ),
+      .y = c("% Chronically Absent", "% Disciplined"),
+      ~ .x %>%
+        # left_join(schools_csi, by = c("district", "school")) %>%
+        select(
+          # district, district_name, school, school_name,
+          district, school,
+          starts_with("pct_students"),
+          -ends_with("ytd")
+        ) %>%
+        gather(
+          year, value,
+          # -district, -district_name, -school, -school_name
+          -district, -school
+        ) %>%
+        mutate_at(
+          vars(year),
+          funs(str_extract_all(., "\\d+", simplify = T))
+        ) %>%
+        mutate(measure = .y)
+    ) %>%
+    reduce(
+      # full_join,
+      # by = c("district", "school", "year")
+      bind_rows
+    ) %>%
+    bind_rows(
+      tvaas_school %>%
+        transmute(
+          district,
+          school,
+          measure = "TVAAS",
+          year,
+          value = tvaas_literacy_numeracy
+        )
+    ) %>%
+    inner_join(schools_csi, by = c("district", "school")) %>%
+    select(district, district_name, school, school_name, measure, year, value) %>%
+    arrange(district_name, school_name, measure, year)
+  
+  # table_school_3_year <-
+  #   map2(
+  #     .x = districts_csi$district,
+  #     .y = districts_csi$district_name,
+  #     function(d, dn) {
+  #       temp %>%
+  #         map2(
+  #           .y = c("Chronically Absent", "Disciplined"),
+  #           ~ .x %>%
+  #             filter(district == d) %>%
+  #             mutate_at(
+  #               vars(school_name),
+  #               funs(factor(., levels = rev(sort(unique(.)))))
+  #             ) %>%
+  #             mutate(
+  #               # These thresholds are based on (but not equal to)
+  #               # accountability thresholds for chronic absenteeism. Adjust
+  #               # these thresholds to account for school pool and differences
+  #               # between chronic absenteeism and discipline.
+  #               score = case_when(
+  #                 pct <= 8 ~ 4,
+  #                 pct <= 12 ~ 3,
+  #                 pct <= 16 ~ 2,
+  #                 pct <= 25 ~ 1,
+  #                 pct > 25 ~ 0
+  #               )
+  #             ) %>%
+  #             ggplot(aes(x = school_name, y = year)) +
+  #             geom_tile(
+  #               aes(fill = factor(score)),
+  #               color = "black",
+  #               show.legend = F
+  #             ) +
+  #             geom_text(aes(label = pct)) +
+  #             coord_flip() +
+  #             scale_y_discrete(position = "right") +
+  #             scale_fill_manual(
+  #               values = c(
+  #                 "red",
+  #                 "orangered",
+  #                 "orange",
+  #                 "yellow",
+  #                 "green"
+  #               )
+  #             ) +
+  #             theme_minimal() +
+  #             theme(
+  #               axis.title = element_blank()
+  #             ) +
+  #             labs(
+  #               title = str_c("Percent of Students ", .y, " in ", dn)
+  #             )
+  #         )
+  #     }
+  #   ) %>%
+  #   set_names(nm = as.character(districts_csi$district))
+
+  table_school_3_year <-
+    map2(
+      .x = districts_csi$district,
+      .y = districts_csi$district_name,
+      ~ temp %>%
+        filter(district == .x) %>%
+        mutate_at(
+          vars(school_name),
+          funs(factor(., levels = rev(sort(unique(.)))))
+        ) %>%
+        mutate(
+          # These thresholds are based on (but not equal to)
+          # accountability thresholds for chronic absenteeism. Adjust
+          # these thresholds to account for school pool and differences
+          # between chronic absenteeism and discipline.
+          threshold_multiplier = if_else(measure == "% Disciplined", 0.75, 1),
+          score = case_when(
+            measure == "TVAAS" ~ value - 1,
+            # value <= 8 ~ 5,
+            value <= 12 * threshold_multiplier ~ 4,
+            value <= 16 * threshold_multiplier ~ 3,
+            value <= 25 * threshold_multiplier ~ 2,
+            value <= 40 * threshold_multiplier ~ 1,
+            value > 40 * threshold_multiplier ~ 0
+          )
+        ) %>%
+        ggplot(aes(x = school_name, y = year)) +
+        geom_tile(
+          aes(fill = factor(score)),
+          color = "black",
+          show.legend = F
+        ) +
+        geom_text(
+          aes(color = factor(score), label = value),
+          show.legend = F
+        ) +
+        coord_flip() +
+        facet_grid(cols = vars(measure)) +
+        # facet_wrap(facets = vars(measure)) +
+        scale_y_discrete(position = "right") +
+        scale_color_manual(values = c("white", rep("black", 4))) +
+        scale_fill_manual(
+          values = c(
+            "black",
+            "tomato3",
+            # "tomato",
+            "darkorange",
+            # "orange",
+            "gold",
+            "darkseagreen"
+          )
+        ) +
+        theme_minimal() +
+        theme(
+          axis.title = element_blank(),
+          strip.placement = "outside"
+          # strip.text = element_text(vjust = 5)
+        ) +
+        labs(
+          title = str_c("End-of-Year Outcomes in ", .y) # str_c("Percent of Students ", .y, " in ", dn)
+        )
+    ) %>%
+    set_names(nm = as.character(districts_csi$district))
+  
+  # print(table_school_3_year$`190`$absence)
+  # print(table_school_3_year[[3]])
+    
+}
+
+```
+
+`r if(params$district == 0) {"# Three-Year Trends in End-of-Year Outcomes"}`
+
+```{r table_school_3_year_print, results="asis"}
+
+if(params$district == 0) {
+  for(d in sort(unique(schools_csi$district))) {
+    print(table_school_3_year[[as.character(d)]])
+    cat("\n\n\\pagebreak\n")
+  }
+}
 
 ```
 
