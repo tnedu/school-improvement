@@ -145,6 +145,9 @@ teacher_school <-
   )
 
 if(params$district == 0) {
+  
+  turnover_school <- read_csv("data/turnover-school.csv")
+  
   tvaas_school <-
     list(
       sy2019 = "N:/ORP_accountability/data/2019_tvaas/SAS-NIET School-Wide.xlsx",
@@ -164,6 +167,7 @@ if(params$district == 0) {
     ) %>%
     reduce(bind_rows) %>%
     arrange(district, school, year)
+  
 }
 
 ```
@@ -1056,9 +1060,85 @@ if(params$district == 0) {
 
 ```
 
+```{r table_school_turnover, include=FALSE}
+
+if(params$district == 0) {
+  
+  table_school_turnover <-
+    map2(
+      .x = districts_csi$district,
+      .y = districts_csi$district_name,
+      ~ turnover_school %>%
+        filter(district == .x) %>%
+        left_join(
+          schools_csi %>% select(-bu_id),
+          by = c("district", "school")
+        ) %>%
+        mutate_at(
+          vars(school_name),
+          funs(factor(., levels = rev(sort(unique(.)))))
+        ) %>%
+        mutate_at(
+          vars(type),
+          funs(if_else(. == "total", "All Teachers", "Teachers with LOE 4+"))
+        ) %>%
+        ggplot(aes(x = school_name, y = period)) +
+        geom_tile(
+          aes(fill = factor(quintile)),
+          color = "black",
+          show.legend = F
+        ) +
+        geom_text(
+          aes(color = factor(quintile), label = round(pct_exited, 1)),
+          show.legend = F
+        ) +
+        # coord_fixed(ratio = 3) +
+        coord_flip() +
+        facet_grid(
+          cols = vars(type)
+          # labeller = label_wrap_gen(width = 10)
+        ) +
+        # facet_wrap(facets = vars(measure)) +
+        scale_y_discrete(
+          labels = label_wrap_gen(width = 10),
+          position = "right"
+        ) +
+        scale_color_manual(values = rev(c("white", rep("black", 4)))) +
+        scale_fill_manual(
+          values = rev(c(
+            "black",
+            "tomato3",
+            # "tomato",
+            "darkorange",
+            # "orange",
+            "gold",
+            "darkseagreen"
+          ))
+        ) +
+        theme_minimal() +
+        theme(
+          # aspect.ratio = 4,
+          axis.title = element_blank(),
+          strip.placement = "outside"
+          # strip.text = element_text(vjust = 5)
+        ) +
+        labs(
+          title = str_c("Year-to-Year Teacher Exits in ", .y) # str_c("Percent of Students ", .y, " in ", dn)
+        )
+    ) %>%
+    set_names(nm = as.character(districts_csi$district))
+  
+  # print(table_school_turnover[[3]])
+  
+}
+
+```
+
 `r if(params$district == 0) {"# Three-Year Trends in End-of-Year Outcomes"}`
 
 ```{r table_school_3_year_print, results="asis"}
+
+# ![]("output/archive/graph-size-test.png")
 
 if(params$district == 0) {
   for(d in sort(unique(schools_csi$district))) {
@@ -1459,6 +1539,21 @@ if(params$district == 0) {
 
 if(params$district == 0) {
   table_school[["792"]][["mobility"]]
+}
+
+```
+
+`r if(params$district == 0) {"# Three-Year Trends in Year-to-Year Teacher Exits"}`
+
+```{r table_school_turnover_print, results="asis"}
+
+# ![]("output/archive/graph-size-test.png")
+
+if(params$district == 0) {
+  for(d in sort(unique(schools_csi$district))) {
+    print(table_school_turnover[[as.character(d)]])
+    cat("\n\n\\pagebreak\n")
+  }
 }
 
 ```
