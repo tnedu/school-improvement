@@ -2,6 +2,7 @@ library(DBI)
 library(RJDBC)
 library(ggpubr)
 library(rmarkdown)
+library(haven)
 library(lubridate)
 library(magrittr)
 library(openxlsx)
@@ -70,18 +71,26 @@ render_reports <-
     if(!dir.exists("output")) dir.create("output")
     file.copy(
       from = "code/monthly-report.pdf",
-      to = str_c("output/monthly-dpsig-report-", district_arg, report_month, ".pdf"),
+      to = str_c(
+        "output/monthly-dpsig-report-",
+        district_arg,
+        report_month,
+        ".pdf"
+      ),
       overwrite = T
     )
   }
 
 walk2(
-  .x = c(districts_csi$district, 0),
-  .y = c(districts_csi$district_name, "State-Level Users"),
-  ~ render_reports(.x, .y) # , data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
+  .x = districts_csi$district,
+  .y = districts_csi$district_name,
+  ~ render_reports(.x, .y, data_file_date_arg = "2020-02-03")
 )
 
-# render_reports(0, "State-Level Users", data_file_date_arg = "2020-01-29", teacher_file_date_arg = "2020-01-29")
+render_reports(
+  0, "State-Level Users",
+  data_file_date_arg = "2020-02-05", teacher_file_date_arg = "2020-02-04"
+)
 
 # Clean up ----
 

@@ -44,9 +44,6 @@ if(params$directory_project == "") {
   directory_project <- params$directory_project
 }
 
-# directory_onedrive <- "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/"
-# directory_project <- "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
-
 opts_chunk$set(
   echo = F,
   fig.height = 7,
@@ -56,7 +53,6 @@ opts_chunk$set(
   warning = F
 )
 
-# opts_knit$set(root.dir = str_c(directory_onedrive, directory_project))
 opts_knit$set(root.dir = directory_project)
 
 ```
@@ -308,42 +304,6 @@ if(params$district == 0) {
         )
     )
   
-  # temp_2 <-
-  #   list(
-  #     absence_district_month,
-  #     discipline_district_month,
-  #     mobility_district_month,
-  #     mobility_district_month
-  #   ) %>%
-  #   map2(
-  #     .y = quos(
-  #       pct_students_chr_absent,
-  #       pct_students_disciplined,
-  #       pct_students_entered,
-  #       pct_students_exited
-  #     ),
-  #     ~ .x %>%
-  #       inner_join(
-  #         schools_csi %>%
-  #           group_by(district) %>%
-  #           filter(n_distinct(school) > 1) %>%
-  #           ungroup() %>%
-  #           distinct(district),
-  #         by = "district"
-  #       ) %>%
-  #       filter(!str_detect(measure_name, "AMO")) %>%
-  #       mutate(measure_name = str_c("ytd_", school_year)) %>%
-  #       select(-school_year, -last_date_of_month, -starts_with("n_")) %>%
-  #       spread(measure_name, !!.y) %>%
-  #       mutate(pct_diff = round(100 * (ytd_2020 - ytd_2019) / ytd_2019, 1)) %>%
-  #       mutate_at(vars(district), factor) %>%
-  #       mutate_at(
-  #         "calendar_month",
-  #         funs(factor(., levels = c(8:12, 1:6), labels = month_levels))
-  #       ) %>%
-  #       filter(!is.na(pct_diff))
-  #   )
-  
   fill_values <-
     district_colors %>%
     inner_join(
@@ -358,71 +318,46 @@ if(params$district == 0) {
   graph_line_state <-
     pmap(
       .l = list(
-        data_frames = temp, # append(temp, temp_2),
+        data_frames = temp,
         y_variables_quo = quos(
           pct_students_chr_absent,
           pct_students_disciplined,
           pct_students_entered,
           pct_students_exited
-          # pct_diff,
-          # pct_diff,
-          # pct_diff,
-          # pct_diff
         ),
         y_variables_chr = c(
           "pct_students_chr_absent",
           "pct_students_disciplined",
           "pct_students_entered",
           "pct_students_exited"
-          # "pct_diff",
-          # "pct_diff",
-          # "pct_diff",
-          # "pct_diff"
         ),
-        y_labels = # rep(
-          c("Chronically Absent",
-            "Disciplined",
-            "Entered",
-            "Exited"),
-        #   2
-        # ),
+        y_labels = c(
+          "Chronically Absent",
+          "Disciplined",
+          "Entered",
+          "Exited"
+        ),
         limits = list(
           c(0, 100),
           c(0, 50),
           c(0, 100),
           c(0, 100)
-          # c(min(temp_2[[1]]$pct_diff) - 5, max(temp_2[[1]]$pct_diff) + 5),
-          # c(min(temp_2[[2]]$pct_diff) - 5, max(temp_2[[2]]$pct_diff) + 5),
-          # c(min(temp_2[[3]]$pct_diff) - 5, max(temp_2[[3]]$pct_diff) + 5),
-          # c(min(temp_2[[4]]$pct_diff) - 5, max(temp_2[[4]]$pct_diff) + 5)
         )
-        # colors = list(
-        #   c("skyblue", "red"),
-        #   c("skyblue", "orange"),
-        #   "purple",
-        #   "deeppink3"
-        # )
       ),
       .f = ~ ..1 %>%
         ggplot(aes(x = calendar_month, y = !! ..2)) +
         geom_line(
-          data = ..1, # %>% filter(!str_detect(measure_name, "AMO")),
+          data = ..1,
           aes(color = district_name, group = district_name),
           show.legend = F,
           size = 1
         ) +
-        # geom_line(
-        #   data = ..1 %>% filter(str_detect(measure_name, "AMO")),
-        #   aes(color = measure_name, group = measure_name),
-        #   linetype = "dashed", size = 1
-        # ) +
         geom_point(aes(color = district_name), show.legend = T, size = 3) +
         scale_y_continuous(
           name = str_c("Percent of Students ", ..4),
           breaks = 0:floor(pmin(100, 1.25 * max(..1[[..3]], na.rm = T)) / 10) * 10,
           limits = c(0, pmin(100, 1.25 * max(..1[[..3]], na.rm = T)))
         ) +
-        # scale_color_manual(values = c("gray", ..6)) +
         scale_color_manual(values = fill_values) +
         theme_minimal() +
         theme(
@@ -443,74 +378,28 @@ if(params$district == 0) {
 
 ```{r graph_bar_school, include=FALSE}
 
-# After some exploration, a state-level version of this graph did not seem
-# particularly helpful.
-
-# fill_labels <- append(
-#   rep(list(c("No", "Yes")), 4),
-#   map(
-#     list(
-#       absence_school,
-#       discipline_school,
-#       mobility_school,
-#       mobility_school
-#     ),
-#     ~ .x %>%
-#       left_join(schools_csi, by = c("district", "school")) %>%
-#       extract2("district_name") %>%
-#       unique() %>%
-#       sort()
-#   )
-# )
-
 graph_bar_school <-
   pmap(
     .l = list(
-      data_frames = # rep(
-        list(
-          absence_school,
-          discipline_school,
-          mobility_school,
-          mobility_school
-        ),
-      #   2
-      # ),
-      y_variables_quo = # rep(
-        quos(
-          pct_students_chr_absent_2020_ytd,
-          pct_students_disciplined_2020_ytd,
-          pct_students_entered_2020_ytd,
-          pct_students_exited_2020_ytd
-        ),
-      #   2
-      # ),
-      y_labels = # rep(
-        c("Chronically Absent",
-          "Disciplined",
-          "Entered",
-          "Exited"),
-      #   2
-      # ),
+      data_frames = list(
+        absence_school,
+        discipline_school,
+        mobility_school,
+        mobility_school
+      ),
+      y_variables_quo = quos(
+        pct_students_chr_absent_2020_ytd,
+        pct_students_disciplined_2020_ytd,
+        pct_students_entered_2020_ytd,
+        pct_students_exited_2020_ytd
+      ),
+      y_labels = c(
+        "Chronically Absent",
+        "Disciplined",
+        "Entered",
+        "Exited"
+      ),
       fill_colors = c("red", "orange", "purple", "deeppink3")
-      # fill_variables = append(
-      #   rep(quos(in_district), 4),
-      #   rep(quos(district_name), 4)
-      # ),
-      # fill_names = c(
-      #   rep("School in your district?", 4),
-      #   rep("", 4)
-      # ),
-      # fill_labels = fill_labels,
-      # fill_values = list(
-      #   c("gray", "red"),
-      #   c("gray", "orange"),
-      #   c("gray", "purple"),
-      #   c("gray", "deeppink3"),
-      #   district_colors$color,
-      #   district_colors$color,
-      #   district_colors$color,
-      #   district_colors$color
-      # )
     ),
     .f = ~ ..1 %>%
       left_join(schools_csi, by = c("district", "school")) %>%
@@ -724,7 +613,7 @@ for(i in 1:length(district_list)) {
         )
       ),
       .f = ~ ..1 %>%
-        filter(district %in% d) %>% # == params$district
+        filter(district %in% d) %>%
         left_join(schools_csi, by = c("district", "school")) %>%
         select(district, district_name, school, school_name, !!! ..2) %>%
         gather(
@@ -755,7 +644,7 @@ for(i in 1:length(district_list)) {
   
   # Tables (ggplot objects)
   
-  temp_2 <- # table_school
+  temp_2 <-
     pmap(
       .l = list(
         data_frames = temp,
@@ -826,10 +715,6 @@ for(i in 1:length(district_list)) {
     ) %>%
     set_names(nm = list_names) %>%
     enframe() %>%
-    # mutate_at(
-    #   vars(value),
-    #   funs(set_names(., nm = list_names))
-    # ) %>%
     rename(!!expr_text(d) := value)
   
   # Make graph titles district-specific for the state users' report.
@@ -863,8 +748,6 @@ for(i in 1:length(district_list)) {
     table_school <- temp_2
   }
   
-  # i <- i + 1
-  
 }
 
 table_school <-
@@ -884,27 +767,19 @@ if(params$district == 0) {
   
   temp <-
     list(
-      # tvaas = tvaas_school,
       absence = absence_school,
       discipline = discipline_school
     ) %>%
     map2(
-      # .y = quos(
-      #   pct_students_chr_absent,
-      #   pct_students_disciplined
-      # ),
       .y = c("% Chronically Absent", "% Disciplined"),
       ~ .x %>%
-        # left_join(schools_csi, by = c("district", "school")) %>%
         select(
-          # district, district_name, school, school_name,
           district, school,
           starts_with("pct_students"),
           -ends_with("ytd")
         ) %>%
         gather(
           year, value,
-          # -district, -district_name, -school, -school_name
           -district, -school
         ) %>%
         mutate_at(
@@ -913,11 +788,7 @@ if(params$district == 0) {
         ) %>%
         mutate(measure = .y)
     ) %>%
-    reduce(
-      # full_join,
-      # by = c("district", "school", "year")
-      bind_rows
-    ) %>%
+    reduce(bind_rows) %>%
     bind_rows(
       tvaas_school %>%
         transmute(
@@ -932,63 +803,6 @@ if(params$district == 0) {
     select(district, district_name, school, school_name, measure, year, value) %>%
     arrange(district_name, school_name, measure, year)
   
-  # table_school_3_year <-
-  #   map2(
-  #     .x = districts_csi$district,
-  #     .y = districts_csi$district_name,
-  #     function(d, dn) {
-  #       temp %>%
-  #         map2(
-  #           .y = c("Chronically Absent", "Disciplined"),
-  #           ~ .x %>%
-  #             filter(district == d) %>%
-  #             mutate_at(
-  #               vars(school_name),
-  #               funs(factor(., levels = rev(sort(unique(.)))))
-  #             ) %>%
-  #             mutate(
-  #               # These thresholds are based on (but not equal to)
-  #               # accountability thresholds for chronic absenteeism. Adjust
-  #               # these thresholds to account for school pool and differences
-  #               # between chronic absenteeism and discipline.
-  #               score = case_when(
-  #                 pct <= 8 ~ 4,
-  #                 pct <= 12 ~ 3,
-  #                 pct <= 16 ~ 2,
-  #                 pct <= 25 ~ 1,
-  #                 pct > 25 ~ 0
-  #               )
-  #             ) %>%
-  #             ggplot(aes(x = school_name, y = year)) +
-  #             geom_tile(
-  #               aes(fill = factor(score)),
-  #               color = "black",
-  #               show.legend = F
-  #             ) +
-  #             geom_text(aes(label = pct)) +
-  #             coord_flip() +
-  #             scale_y_discrete(position = "right") +
-  #             scale_fill_manual(
-  #               values = c(
-  #                 "red",
-  #                 "orangered",
-  #                 "orange",
-  #                 "yellow",
-  #                 "green"
-  #               )
-  #             ) +
-  #             theme_minimal() +
-  #             theme(
-  #               axis.title = element_blank()
-  #             ) +
-  #             labs(
-  #               title = str_c("Percent of Students ", .y, " in ", dn)
-  #             )
-  #         )
-  #     }
-  #   ) %>%
-  #   set_names(nm = as.character(districts_csi$district))
-
   table_school_3_year <-
     map2(
       .x = districts_csi$district,
@@ -1007,7 +821,6 @@ if(params$district == 0) {
           threshold_multiplier = if_else(measure == "% Disciplined", 0.75, 1),
           score = case_when(
             measure == "TVAAS" ~ value - 1,
-            # value <= 8 ~ 5,
             value <= 12 * threshold_multiplier ~ 4,
             value <= 16 * threshold_multiplier ~ 3,
             value <= 25 * threshold_multiplier ~ 2,
@@ -1027,16 +840,13 @@ if(params$district == 0) {
         ) +
         coord_flip() +
         facet_grid(cols = vars(measure)) +
-        # facet_wrap(facets = vars(measure)) +
         scale_y_discrete(position = "right") +
         scale_color_manual(values = c("white", rep("black", 4))) +
         scale_fill_manual(
           values = c(
             "black",
             "tomato3",
-            # "tomato",
             "darkorange",
-            # "orange",
             "gold",
             "darkseagreen"
           )
@@ -1045,7 +855,6 @@ if(params$district == 0) {
         theme(
           axis.title = element_blank(),
           strip.placement = "outside"
-          # strip.text = element_text(vjust = 5)
         ) +
         labs(
           title = str_c("End-of-Year Outcomes in ", .y) # str_c("Percent of Students ", .y, " in ", dn)
@@ -1053,7 +862,6 @@ if(params$district == 0) {
     ) %>%
     set_names(nm = as.character(districts_csi$district))
   
-  # print(table_school_3_year$`190`$absence)
   # print(table_school_3_year[[3]])
     
 }
@@ -1092,13 +900,8 @@ if(params$district == 0) {
           aes(color = factor(quintile), label = round(pct_exited, 1)),
           show.legend = F
         ) +
-        # coord_fixed(ratio = 3) +
         coord_flip() +
-        facet_grid(
-          cols = vars(type)
-          # labeller = label_wrap_gen(width = 10)
-        ) +
-        # facet_wrap(facets = vars(measure)) +
+        facet_grid(cols = vars(type)) +
         scale_y_discrete(
           labels = label_wrap_gen(width = 10),
           position = "right"
@@ -1108,22 +911,18 @@ if(params$district == 0) {
           values = rev(c(
             "black",
             "tomato3",
-            # "tomato",
             "darkorange",
-            # "orange",
             "gold",
             "darkseagreen"
           ))
         ) +
         theme_minimal() +
         theme(
-          # aspect.ratio = 4,
           axis.title = element_blank(),
           strip.placement = "outside"
-          # strip.text = element_text(vjust = 5)
         ) +
         labs(
-          title = str_c("Year-to-Year Teacher Exits in ", .y) # str_c("Percent of Students ", .y, " in ", dn)
+          title = str_c("Year-to-Year Teacher Exits in ", .y)
         )
     ) %>%
     set_names(nm = as.character(districts_csi$district))
@@ -1137,8 +936,6 @@ if(params$district == 0) {
 `r if(params$district == 0) {"# Three-Year Trends in End-of-Year Outcomes"}`
 
 ```{r table_school_3_year_print, results="asis"}
-
-# ![]("output/archive/graph-size-test.png")
 
 if(params$district == 0) {
   for(d in sort(unique(schools_csi$district))) {
@@ -1190,18 +987,7 @@ d <- as.character(params$district)
 
 if(params$district > 0) {
   table_school[[d]]$absence
-} # else {
-  # for(d in as.character(district_list)) {
-  #   print(table_school[[d]]$absence)
-  # }
-  # walk(
-  #   .x = as.character(district_list),
-  #   .f = ~ print(table_school[[.x]]$absence)
-  # )
-  # table_school[["985"]]$absence
-  # table_school[["190"]]$absence
-  # table_school[["330"]]$absence
-# }
+}
 
 ```
 \newpage
@@ -1462,11 +1248,7 @@ d <- as.character(params$district)
 
 if(params$district > 0) {
   table_school[[d]]$mobility
-} # else {
-#   for(d in as.character(district_list)) {
-#     print(table_school[[d]]$mobility)
-#   }
-# }
+}
 
 ```
 \newpage
@@ -1546,8 +1328,6 @@ if(params$district == 0) {
 `r if(params$district == 0) {"# Three-Year Trends in Year-to-Year Teacher Exits"}`
 
 ```{r table_school_turnover_print, results="asis"}
-
-# ![]("output/archive/graph-size-test.png")
 
 if(params$district == 0) {
   for(d in sort(unique(schools_csi$district))) {
