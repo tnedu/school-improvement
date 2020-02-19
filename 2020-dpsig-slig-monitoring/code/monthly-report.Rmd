@@ -1,11 +1,12 @@
 ---
 params:
-  district: 792
-  district_name: "Shelby County"
-  report_date: !r format(lubridate::today(), "%B %d, %Y")
+  district: 0
+  district_name: "State-Level Users"
   data_file_date: !r lubridate::today()
+  directory_project: ""
+  report_date: !r format(lubridate::today(), "%B %d, %Y")
   teacher_file_date: !r lubridate::today()
-  teacher_file_month: "-2019-11"
+  teacher_file_month: "-2019-12"
 title: "`r paste('Monthly DPSIG/SLIG Data Report for ', params$district_name)`"
 date: "`r params$report_date`"
 output:
@@ -22,10 +23,26 @@ library(knitr)
 library(ggpubr)
 library(magrittr)
 library(openxlsx)
+library(rlang)
 library(tidyverse)
 
-directory_onedrive <- "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/"
-directory_project <- "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
+use_master <- F
+
+if(params$directory_project == "") {
+  if(use_master) {
+    directory_project <- str_c(
+      "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/",
+      "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
+    )
+  } else {
+    directory_project <- str_c(
+      "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/",
+      "team-members/josh-carson/school-improvement/2020-dpsig-slig-monitoring/"
+    )
+  }
+} else {
+  directory_project <- params$directory_project
+}
 
 opts_chunk$set(
   echo = F,
@@ -36,7 +53,7 @@ opts_chunk$set(
   warning = F
 )
 
-opts_knit$set(root.dir = str_c(directory_onedrive, directory_project))
+opts_knit$set(root.dir = directory_project)
 
 ```
 
@@ -119,93 +136,243 @@ schools_csi <- read_csv("data/schools-csi.csv")
 teacher_school <-
   read_csv(
     str_c("data/teacher-school-",
-          params$data_file_date,
+          params$teacher_file_date,
           ".csv")
   )
+
+if(params$district == 0) {
+  
+  turnover_school <- read_csv("data/turnover-school.csv")
+  
+  tvaas_school <-
+    list(
+      sy2019 = "N:/ORP_accountability/data/2019_tvaas/SAS-NIET School-Wide.xlsx",
+      sy2018 = "N:/ORP_accountability/data/2018_tvaas/School Composite Level.xlsx",
+      sy2017 = "N:/ORP_accountability/data/2017_tvaas/2017 School Composites.xlsx"
+    ) %>%
+    imap(
+      ~ .x %>%
+        read.xlsx() %>%
+        janitor::clean_names() %>%
+        transmute(
+          district = as.numeric(district_number),
+          school = as.numeric(school_number),
+          year = str_extract_all(.y, "\\d+", simplify = T),
+          tvaas_literacy_numeracy = school_wide_literacy_and_numeracy
+        )
+    ) %>%
+    reduce(bind_rows) %>%
+    arrange(district, school, year)
+  
+}
+
+```
+
+```{r district_colors, include=FALSE}
+
+# For graphs that use district as the fill variable, set a consistent color for
+# each district.
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+district_colors <- tibble(
+  district = sort(unique(schools_csi$district)),
+  color = gg_color_hue(n_distinct(schools_csi$district))
+)
 
 ```
 
 ```{r graph_line_district, include=FALSE}
 
-temp <-
-  list(
-    absence_district_month,
-    discipline_district_month,
-    mobility_district_month,
-    mobility_district_month
-  ) %>%
-  map(
-    ~ .x %>%
-      filter(district == params$district) %>%
-      mutate_at(
-        "calendar_month",
-        funs(factor(., levels = c(8:12, 1:6), labels = month_levels))
-      )
-  )
+if(params$district > 0) {
+  
+  temp <-
+    list(
+      absence_district_month,
+      discipline_district_month,
+      mobility_district_month,
+      mobility_district_month
+    ) %>%
+    map(
+      ~ .x %>%
+        filter(district == params$district) %>%
+        mutate_at(
+          "calendar_month",
+          funs(factor(., levels = c(8:12, 1:6), labels = month_levels))
+        )
+    )
+  
+  graph_line_district <-
+    pmap(
+      .l = list(
+        data_frames = temp,
+        y_variables_quo = quos(
+          pct_students_chr_absent,
+          pct_students_disciplined,
+          pct_students_entered,
+          pct_students_exited
+        ),
+        y_variables_chr = c(
+          "pct_students_chr_absent",
+          "pct_students_disciplined",
+          "pct_students_entered",
+          "pct_students_exited"
+        ),
+        y_labels = c(
+          "Chronically Absent",
+          "Disciplined",
+          "Entered",
+          "Exited"
+        ),
+        limits = list(
+          c(0, 100),
+          c(0, 50),
+          c(0, 100),
+          c(0, 100)
+        ),
+        colors = list(
+          c("skyblue", "red"),
+          c("skyblue", "orange"),
+          "purple",
+          "deeppink3"
+        )
+      ),
+      .f = ~ ..1 %>%
+        ggplot(aes(x = calendar_month, y = !! ..2)) +
+        geom_line(
+          data = ..1 %>% filter(!str_detect(measure_name, "AMO")),
+          aes(color = measure_name, group = measure_name),
+          size = 1
+        ) +
+        geom_line(
+          data = ..1 %>% filter(str_detect(measure_name, "AMO")),
+          aes(color = measure_name, group = measure_name),
+          linetype = "dashed", size = 1
+        ) +
+        geom_point(aes(color = measure_name), size = 3) +
+        scale_y_continuous(
+          name = str_c("Percent of Students ", ..4),
+          limits = c(0, pmin(100, 1.25 * max(..1[[..3]], na.rm = T)))
+        ) +
+        scale_color_manual(values = c("gray", ..6)) +
+        theme_minimal() +
+        theme(
+          axis.title.x = element_blank(),
+          legend.position = "top",
+          legend.title = element_blank(),
+          panel.grid = element_blank()
+        ) +
+        ggtitle("Your CSI Schools This Year vs. Last Year")
+    ) %>%
+    set_names(nm = c("absence", "discipline", "mobility_enter", "mobility_exit"))
+  
+  # walk(graph_line_district, print)
+  
+}
 
-graph_line_district <-
-  pmap(
-    .l = list(
-      data_frames = temp,
-      y_variables_quo = quos(
-        pct_students_chr_absent,
-        pct_students_disciplined,
-        pct_students_entered,
-        pct_students_exited
+```
+
+```{r graph_line_state, include=FALSE}
+
+if(params$district == 0) {
+  
+  temp <-
+    list(
+      absence_district_month,
+      discipline_district_month,
+      mobility_district_month,
+      mobility_district_month
+    ) %>%
+    map(
+      ~ .x %>%
+        filter(measure_name == "2020 Year-to-Date") %>%
+        inner_join(
+          schools_csi %>%
+            group_by(district) %>%
+            filter(n_distinct(school) > 1) %>%
+            ungroup() %>%
+            distinct(district, district_name),
+          by = "district"
+        ) %>%
+        mutate_at(vars(district), factor) %>%
+        mutate_at(
+          "calendar_month",
+          funs(factor(., levels = c(8:12, 1:6), labels = month_levels))
+        )
+    )
+  
+  fill_values <-
+    district_colors %>%
+    inner_join(
+      temp %>%
+        reduce(bind_rows) %>%
+        mutate_at(vars(district), funs(as.numeric(as.character(.)))) %>%
+        distinct(district),
+      by = "district"
+    ) %>%
+    extract2("color")
+  
+  graph_line_state <-
+    pmap(
+      .l = list(
+        data_frames = temp,
+        y_variables_quo = quos(
+          pct_students_chr_absent,
+          pct_students_disciplined,
+          pct_students_entered,
+          pct_students_exited
+        ),
+        y_variables_chr = c(
+          "pct_students_chr_absent",
+          "pct_students_disciplined",
+          "pct_students_entered",
+          "pct_students_exited"
+        ),
+        y_labels = c(
+          "Chronically Absent",
+          "Disciplined",
+          "Entered",
+          "Exited"
+        ),
+        limits = list(
+          c(0, 100),
+          c(0, 50),
+          c(0, 100),
+          c(0, 100)
+        )
       ),
-      y_variables_chr = c(
-        "pct_students_chr_absent",
-        "pct_students_disciplined",
-        "pct_students_entered",
-        "pct_students_exited"
-      ),
-      y_labels = c(
-        "Chronically Absent",
-        "Disciplined",
-        "Entered",
-        "Exited"
-      ),
-      limits = list(
-        c(0, 100),
-        c(0, 50),
-        c(0, 100),
-        c(0, 100)
-      ),
-      colors = list(
-        c("skyblue", "red"),
-        c("skyblue", "orange"),
-        "purple",
-        "deeppink3"
-      )
-    ),
-    .f = ~ ..1 %>%
-      ggplot(aes(x = calendar_month, y = !! ..2)) +
-      geom_line(
-        data = ..1 %>% filter(!str_detect(measure_name, "AMO")),
-        aes(color = measure_name, group = measure_name),
-        size = 1
-      ) +
-      geom_line(
-        data = ..1 %>% filter(str_detect(measure_name, "AMO")),
-        aes(color = measure_name, group = measure_name),
-        linetype = "dashed", size = 1
-      ) +
-      geom_point(aes(color = measure_name), size = 3) +
-      scale_y_continuous(
-        name = str_c("Percent of Students ", ..4),
-        limits = c(0, pmin(100, 1.25 * max(..1[[..3]], na.rm = T)))
-      ) +
-      scale_color_manual(values = c("gray", ..6)) +
-      theme_minimal() +
-      theme(
-        axis.title.x = element_blank(),
-        legend.position = "top",
-        legend.title = element_blank(),
-        panel.grid = element_blank()
-      ) +
-      ggtitle("Your CSI Schools This Year vs. Last Year")
-  ) %>%
-  set_names(nm = c("absence", "discipline", "mobility_enter", "mobility_exit"))
+      .f = ~ ..1 %>%
+        ggplot(aes(x = calendar_month, y = !! ..2)) +
+        geom_line(
+          data = ..1,
+          aes(color = district_name, group = district_name),
+          show.legend = F,
+          size = 1
+        ) +
+        geom_point(aes(color = district_name), show.legend = T, size = 3) +
+        scale_y_continuous(
+          name = str_c("Percent of Students ", ..4),
+          breaks = 0:floor(pmin(100, 1.25 * max(..1[[..3]], na.rm = T)) / 10) * 10,
+          limits = c(0, pmin(100, 1.25 * max(..1[[..3]], na.rm = T)))
+        ) +
+        scale_color_manual(values = fill_values) +
+        theme_minimal() +
+        theme(
+          axis.title.x = element_blank(),
+          legend.position = "top",
+          legend.title = element_blank(),
+          panel.grid = element_blank()
+        ) +
+        ggtitle("CSI Schools This Year Across Districts")
+    ) %>%
+    set_names(nm = c("absence", "discipline", "mobility_enter", "mobility_exit"))
+  
+  # walk(graph_line_state, print)
+  
+}
 
 ```
 
@@ -237,12 +404,14 @@ graph_bar_school <-
     .f = ~ ..1 %>%
       left_join(schools_csi, by = c("district", "school")) %>%
       mutate(
-        school_name = reorder(school_name, !! ..2, max),
+        school_name = reorder(school_name, !!..2, max),
         in_district = district == params$district,
-        y_limit = max(!! ..2, na.rm = T)
+        y_limit = max(!!..2, na.rm = T)
       ) %>%
-      mutate_at(vars(!! ..2), funs(if_else(. < 0.5 | is.na(.), 0.5, .))) %>%
-      ggplot(aes(x = school_name, y = !! ..2)) +
+      # Change small or missing values to 0.5 so that bars appear (with
+      # shading) for those schools.
+      mutate_at(vars(!!..2), funs(if_else(. < 0.5 | is.na(.), 0.5, .))) %>%
+      ggplot(aes(x = school_name, y = !!..2)) +
       geom_col(aes(fill = in_district)) +
       scale_x_discrete(name = "Each bar represents one CSI school.") +
       scale_y_continuous(
@@ -263,6 +432,8 @@ graph_bar_school <-
       ggtitle("Your CSI Schools Compared to Other Districts' This Year")
   ) %>%
   set_names(nm = c("absence", "discipline", "mobility_enter", "mobility_exit"))
+
+# walk(graph_bar_school, print)
 
 ```
 
@@ -388,7 +559,7 @@ columns <-
     )
   )
 
-# Reverse-fill the second variable in pairs (e.g., student entrance and exit
+# Reverse-fill the second variables in pairs (e.g., student entrance and exit
 # rates).
 
 variables_reverse_fill <- c(
@@ -396,136 +567,382 @@ variables_reverse_fill <- c(
   "school_rank_exited_math" # paired with ELA exit rate
 )
 
-# Data frames
+# When params$district == 0, create one table per district, and include all of
+# these tables in the report. Otherwise, create a table only for the district
+# in question.
 
-temp <-
-  pmap(
-    .l = list(
-      data_frames = list(
-        absence_school,
-        discipline_school,
-        mobility_school,
-        teacher_school,
-        teacher_school
-      ),
-      column_levels = list(
-        columns$levels_absence,
-        columns$levels_discipline,
-        columns$levels_mobility,
-        columns$levels_teacher_exit_ela_math,
-        columns$levels_teacher_absenteeism_ela_math
-      ),
-      column_labels = list(
-        columns$labels_absence_discipline,
-        columns$labels_absence_discipline,
-        columns$labels_mobility,
-        columns$labels_teacher_exit_ela_math,
-        columns$labels_teacher_absenteeism_ela_math
-      )
-    ),
-    .f = ~ ..1 %>%
-      filter(district == params$district) %>%
-      left_join(schools_csi, by = c("district", "school")) %>%
-      select(district, district_name, school, school_name, !!! ..2) %>%
-      gather(
-        column_name, cell_value,
-        -district, -district_name, -school, -school_name
-      ) %>%
-      mutate(
-        cell_label = if_else(
-          str_detect(column_name, "pct"),
-          str_c(round(cell_value), "%"),
-          as.character(cell_value)
+if(params$district == 0) {
+  district_list <-
+    schools_csi %>%
+    distinct(district, district_name) %>%
+    arrange(district_name) %>%
+    extract2("district")
+} else {
+  district_list <- params$district
+}
+
+for(i in 1:length(district_list)) {
+  
+  d <- as.numeric(district_list[[i]])
+  
+  # Data frames
+  
+  temp <-
+    pmap(
+      .l = list(
+        data_frames = list(
+          absence_school,
+          discipline_school,
+          mobility_school,
+          teacher_school,
+          teacher_school
         ),
-        fill_var = case_when(
-          column_name %in% variables_reverse_fill ~ -1 * cell_value,
-          str_detect(column_name, "rank") ~ cell_value
+        column_levels = list(
+          columns$levels_absence,
+          columns$levels_discipline,
+          columns$levels_mobility,
+          columns$levels_teacher_exit_ela_math,
+          columns$levels_teacher_absenteeism_ela_math
+        ),
+        column_labels = list(
+          columns$labels_absence_discipline,
+          columns$labels_absence_discipline,
+          columns$labels_mobility,
+          columns$labels_teacher_exit_ela_math,
+          columns$labels_teacher_absenteeism_ela_math
         )
-      ) %>%
+      ),
+      .f = ~ ..1 %>%
+        filter(district %in% d) %>%
+        left_join(schools_csi, by = c("district", "school")) %>%
+        select(district, district_name, school, school_name, !!! ..2) %>%
+        gather(
+          column_name, cell_value,
+          -district, -district_name, -school, -school_name
+        ) %>%
+        mutate(
+          cell_label = if_else(
+            str_detect(column_name, "pct"),
+            str_c(round(cell_value), "%"),
+            as.character(cell_value)
+          ),
+          fill_var = case_when(
+            column_name %in% variables_reverse_fill ~ -1 * cell_value,
+            str_detect(column_name, "rank") ~ cell_value
+          )
+        ) %>%
+        mutate_at(
+          "column_name",
+          funs(factor(., levels = ..2, labels = ..3))
+        ) %>%
+        mutate_at(
+          "school_name",
+          funs(factor(., levels = base::sort(unique(.), decreasing = T)))
+        )
+    ) %>%
+    set_names(nm = list_names)
+  
+  # Tables (ggplot objects)
+  
+  temp_2 <-
+    pmap(
+      .l = list(
+        data_frames = temp,
+        outcome_names = outcome_names,
+        fill_colors_low = c(
+          rep("darkseagreen", 2),
+          "deeppink3",
+          "cyan3",
+          "darkseagreen"
+        ),
+        fill_colors_high = c(
+          rep("tomato", 2),
+          "purple",
+          "darkorange2",
+          "tomato"
+        ),
+        limits = list(
+          c(1, nrow(schools_csi)),
+          c(1, nrow(schools_csi)),
+          c(-1 * nrow(schools_csi), nrow(schools_csi)),
+          c(-1 * nrow(schools_csi), nrow(schools_csi)),
+          c(1, nrow(schools_csi))
+        ),
+        midpoints = c(
+          rep(median(1:nrow(schools_csi)), 2),
+          0,
+          0,
+          median(1:nrow(schools_csi))
+        ),
+        captions = captions,
+        font_sizes = c(5, 5, 5, 4, 4)
+      ),
+      .f = ~ ..1 %>%
+        ggplot(aes(x = school_name, y = column_name)) +
+        geom_tile(
+          aes(fill = fill_var), show.legend = F,
+          color = "black"
+        ) +
+        geom_text(
+          data = ..1 %>% filter(!str_detect(column_name, "Rank")),
+          aes(label = cell_label), hjust = 1, nudge_y = 0.2, size = ..8
+        ) +
+        geom_text(
+          data = ..1 %>% filter(str_detect(column_name, "Rank")),
+          aes(label = cell_label), size = ..8
+        ) +
+        coord_flip() +
+        scale_y_discrete(
+          labels = label_wrap_gen(width = 10),
+          position = "right"
+        ) +
+        scale_fill_gradient2(
+          low = ..3, mid = "gray85", high = ..4,
+          limits = ..5,
+          midpoint = ..6,
+          na.value = "white"
+        ) +
+        theme_minimal() +
+        theme(
+          axis.title = element_blank(),
+          axis.text = element_text(face = "bold"),
+          panel.grid = element_blank()
+        ) +
+        labs(
+          title = str_c(..2, " in Your CSI Schools"),
+          caption = ..7
+        )
+    ) %>%
+    set_names(nm = list_names) %>%
+    enframe() %>%
+    rename(!!expr_text(d) := value)
+  
+  # Make graph titles district-specific for the state users' report.
+  
+  if(params$district == 0) {
+    temp_2 <-
+      temp_2 %>%
       mutate_at(
-        "column_name",
-        funs(factor(., levels = ..2, labels = ..3))
-      ) %>%
-      mutate_at(
-        "school_name",
-        funs(factor(., levels = base::sort(unique(.), decreasing = T)))
+        vars(-name),
+        funs(
+          map(
+            .x = .,
+            .f = function(graph) {
+              graph$labels$title <- str_replace(
+                graph$labels$title,
+                "Your CSI Schools",
+                unique(graph$data$district_name)
+              )
+              return(graph)
+            }
+          )
+        )
       )
-  )
-
-# Tables (ggplot objects)
+  }
+  
+  if(params$district == 0 & i > 1) {
+    table_school <-
+      table_school %>%
+      full_join(temp_2, by = "name")
+  } else {
+    table_school <- temp_2
+  }
+  
+}
 
 table_school <-
-  pmap(
-    .l = list(
-      data_frames = temp,
-      outcome_names = outcome_names,
-      fill_colors_low = c(
-        rep("darkseagreen", 2),
-        "deeppink3",
-        "cyan3",
-        "darkseagreen"
-      ),
-      fill_colors_high = c(
-        rep("tomato", 2),
-        "purple",
-        "darkorange2",
-        "tomato"
-      ),
-      limits = list(
-        c(1, nrow(schools_csi)),
-        c(1, nrow(schools_csi)),
-        c(-1 * nrow(schools_csi), nrow(schools_csi)),
-        c(-1 * nrow(schools_csi), nrow(schools_csi)),
-        c(1, nrow(schools_csi))
-      ),
-      midpoints = c(
-        rep(median(1:nrow(schools_csi)), 2),
-        0,
-        0,
-        median(1:nrow(schools_csi))
-      ),
-      captions = captions,
-      font_sizes = c(5, 5, 5, 4, 4)
-    ),
-    .f = ~ ..1 %>%
-      ggplot(aes(x = school_name, y = column_name)) +
-      geom_tile(
-        aes(fill = fill_var), show.legend = F,
-        color = "black"
-      ) +
-      geom_text(
-        data = ..1 %>% filter(!str_detect(column_name, "Rank")),
-        aes(label = cell_label), hjust = 1, nudge_y = 0.2, size = ..8
-      ) +
-      geom_text(
-        data = ..1 %>% filter(str_detect(column_name, "Rank")),
-        aes(label = cell_label), size = ..8
-      ) +
-      coord_flip() +
-      scale_y_discrete(
-        labels = label_wrap_gen(width = 10),
-        position = "right"
-      ) +
-      scale_fill_gradient2(
-        low = ..3, mid = "gray85", high = ..4,
-        limits = ..5,
-        midpoint = ..6,
-        na.value = "white"
-      ) +
-      theme_minimal() +
-      theme(
-        axis.title = element_blank(),
-        axis.text = element_text(face = "bold"),
-        panel.grid = element_blank()
-      ) +
-      labs(
-        title = str_c(..2, " in Your CSI Schools"),
-        caption = ..7
-      )
-  ) %>%
-  set_names(nm = list_names)
+  table_school %>%
+  mutate_at(
+    vars(-name),
+    funs(set_names(., nm = list_names))
+  )
 
-# walk(table_school, print)
+# walk(table_school$`190`, print)
+
+```
+
+```{r table_school_3_year, include=FALSE}
+
+if(params$district == 0) {
+  
+  temp <-
+    list(
+      absence = absence_school,
+      discipline = discipline_school
+    ) %>%
+    map2(
+      .y = c("% Chronically Absent", "% Disciplined"),
+      ~ .x %>%
+        select(
+          district, school,
+          starts_with("pct_students"),
+          -ends_with("ytd")
+        ) %>%
+        gather(
+          year, value,
+          -district, -school
+        ) %>%
+        mutate_at(
+          vars(year),
+          funs(str_extract_all(., "\\d+", simplify = T))
+        ) %>%
+        mutate(measure = .y)
+    ) %>%
+    reduce(bind_rows) %>%
+    bind_rows(
+      tvaas_school %>%
+        transmute(
+          district,
+          school,
+          measure = "TVAAS",
+          year,
+          value = tvaas_literacy_numeracy
+        )
+    ) %>%
+    inner_join(schools_csi, by = c("district", "school")) %>%
+    select(district, district_name, school, school_name, measure, year, value) %>%
+    arrange(district_name, school_name, measure, year)
+  
+  table_school_3_year <-
+    map2(
+      .x = districts_csi$district,
+      .y = districts_csi$district_name,
+      ~ temp %>%
+        filter(district == .x) %>%
+        mutate_at(
+          vars(school_name),
+          funs(factor(., levels = rev(sort(unique(.)))))
+        ) %>%
+        mutate(
+          # These thresholds are based on (but not equal to)
+          # accountability thresholds for chronic absenteeism. Adjust
+          # these thresholds to account for school pool and differences
+          # between chronic absenteeism and discipline.
+          threshold_multiplier = if_else(measure == "% Disciplined", 0.75, 1),
+          score = case_when(
+            measure == "TVAAS" ~ value - 1,
+            value <= 12 * threshold_multiplier ~ 4,
+            value <= 16 * threshold_multiplier ~ 3,
+            value <= 25 * threshold_multiplier ~ 2,
+            value <= 40 * threshold_multiplier ~ 1,
+            value > 40 * threshold_multiplier ~ 0
+          )
+        ) %>%
+        ggplot(aes(x = school_name, y = year)) +
+        geom_tile(
+          aes(fill = factor(score)),
+          color = "black",
+          show.legend = F
+        ) +
+        geom_text(
+          aes(color = factor(score), label = value),
+          show.legend = F
+        ) +
+        coord_flip() +
+        facet_grid(cols = vars(measure)) +
+        scale_y_discrete(position = "right") +
+        scale_color_manual(values = c("white", rep("black", 4))) +
+        scale_fill_manual(
+          values = c(
+            "black",
+            "tomato3",
+            "darkorange",
+            "gold",
+            "darkseagreen"
+          )
+        ) +
+        theme_minimal() +
+        theme(
+          axis.title = element_blank(),
+          strip.placement = "outside"
+        ) +
+        labs(
+          title = str_c("End-of-Year Outcomes in ", .y) # str_c("Percent of Students ", .y, " in ", dn)
+        )
+    ) %>%
+    set_names(nm = as.character(districts_csi$district))
+  
+  # print(table_school_3_year[[3]])
+    
+}
+
+```
+
+```{r table_school_turnover, include=FALSE}
+
+if(params$district == 0) {
+  
+  table_school_turnover <-
+    map2(
+      .x = districts_csi$district,
+      .y = districts_csi$district_name,
+      ~ turnover_school %>%
+        filter(district == .x) %>%
+        left_join(
+          schools_csi %>% select(-bu_id),
+          by = c("district", "school")
+        ) %>%
+        mutate_at(
+          vars(school_name),
+          funs(factor(., levels = rev(sort(unique(.)))))
+        ) %>%
+        mutate_at(
+          vars(type),
+          funs(if_else(. == "total", "All Teachers", "Teachers with LOE 4+"))
+        ) %>%
+        ggplot(aes(x = school_name, y = period)) +
+        geom_tile(
+          aes(fill = factor(quintile)),
+          color = "black",
+          show.legend = F
+        ) +
+        geom_text(
+          aes(color = factor(quintile), label = round(pct_exited, 1)),
+          show.legend = F
+        ) +
+        coord_flip() +
+        facet_grid(cols = vars(type)) +
+        scale_y_discrete(
+          labels = label_wrap_gen(width = 10),
+          position = "right"
+        ) +
+        scale_color_manual(values = rev(c("white", rep("black", 4)))) +
+        scale_fill_manual(
+          values = rev(c(
+            "black",
+            "tomato3",
+            "darkorange",
+            "gold",
+            "darkseagreen"
+          ))
+        ) +
+        theme_minimal() +
+        theme(
+          axis.title = element_blank(),
+          strip.placement = "outside"
+        ) +
+        labs(
+          title = str_c("Year-to-Year Teacher Exits in ", .y)
+        )
+    ) %>%
+    set_names(nm = as.character(districts_csi$district))
+  
+  # print(table_school_turnover[[3]])
+  
+}
+
+```
+
+`r if(params$district == 0) {"# Three-Year Trends in End-of-Year Outcomes"}`
+
+```{r table_school_3_year_print, results="asis"}
+
+if(params$district == 0) {
+  for(d in sort(unique(schools_csi$district))) {
+    print(table_school_3_year[[as.character(d)]])
+    cat("\n\n\\pagebreak\n")
+  }
+}
 
 ```
 
@@ -540,7 +957,13 @@ The graph below shows year-to-date chronic absenteeism data *pooled across all o
 * The red line represents actual data this year.
 
 ```{r graph_line_district_absence, fig.height=4}
-graph_line_district$absence
+
+if(params$district > 0) {
+  graph_line_district$absence
+} else {
+  graph_line_state$absence
+}
+
 ```
 \newpage
 
@@ -550,14 +973,96 @@ The graph below shows year-to-date chronic absenteeism data *for each CSI school
 * Each gray bar is a CSI school outside your district.
 
 ```{r graph_bar_school_absence, fig.height=5}
-graph_bar_school$absence
+
+if(params$district > 0) {
+  graph_bar_school$absence
+}
+
 ```
 \newpage
 
 ```{r table_school_absence}
-table_school$absence
+
+d <- as.character(params$district)
+
+if(params$district > 0) {
+  table_school[[d]]$absence
+}
+
 ```
 \newpage
+
+```{r table_school_absence_985}
+
+if(params$district == 0) {
+  table_school[["985"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_70}
+
+if(params$district == 0) {
+  table_school[["70"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_180}
+
+if(params$district == 0) {
+  table_school[["180"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_190}
+
+if(params$district == 0) {
+  table_school[["190"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_240}
+
+if(params$district == 0) {
+  table_school[["240"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_330}
+
+if(params$district == 0) {
+  table_school[["330"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_470}
+
+if(params$district == 0) {
+  table_school[["470"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_570}
+
+if(params$district == 0) {
+  table_school[["570"]][["absence"]]
+}
+
+```
+
+```{r table_school_absence_792}
+
+if(params$district == 0) {
+  table_school[["792"]][["absence"]]
+}
+
+```
 
 # Out-of-School Discipline Rates
 
@@ -570,7 +1075,13 @@ The graph below shows year-to-date out-of-school discipline data *pooled across 
 * The orange line represents actual data this year.
 
 ```{r graph_line_district_discipline, fig.height=4}
-graph_line_district$discipline
+
+if(params$district > 0) {
+  graph_line_district$discipline
+} else {
+  graph_line_state$discipline
+}
+
 ```
 \newpage
 
@@ -580,14 +1091,100 @@ The graph below shows year-to-date out-of-school discipline data *for each CSI s
 * Each gray bar is a CSI school outside your district.
 
 ```{r graph_bar_school_discipline, fig.height=5}
-graph_bar_school$discipline
+
+if(params$district > 0) {
+  graph_bar_school$discipline
+}
+
 ```
 \newpage
 
 ```{r table_school_discipline}
-table_school$discipline
+
+d <- as.character(params$district)
+
+if(params$district > 0) {
+  table_school[[d]]$discipline
+} # else {
+#   for(d in as.character(district_list)) {
+#     print(table_school[[d]]$discipline)
+#   }
+# }
+
 ```
 \newpage
+
+```{r table_school_discipline_985}
+
+if(params$district == 0) {
+  table_school[["985"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_70}
+
+if(params$district == 0) {
+  table_school[["70"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_180}
+
+if(params$district == 0) {
+  table_school[["180"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_190}
+
+if(params$district == 0) {
+  table_school[["190"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_240}
+
+if(params$district == 0) {
+  table_school[["240"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_330}
+
+if(params$district == 0) {
+  table_school[["330"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_470}
+
+if(params$district == 0) {
+  table_school[["470"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_570}
+
+if(params$district == 0) {
+  table_school[["570"]][["discipline"]]
+}
+
+```
+
+```{r table_school_discipline_792}
+
+if(params$district == 0) {
+  table_school[["792"]][["discipline"]]
+}
+
+```
 
 # Student Mobility
 
@@ -601,13 +1198,26 @@ The graphs below show year-to-date student mobility data *pooled across all of y
 * The purple and pink lines, respectively, represent actual data this year.
 
 ```{r graph_line_district_mobility, fig.height=4}
-ggarrange(
-  graph_line_district$mobility_enter +
-    labs(subtitle = "Student Entrance Rate"),
-  graph_line_district$mobility_exit +
-    labs(subtitle = "Student Exit Rate"),
-  ncol = 2, nrow = 1
-)
+
+if(params$district > 0) {
+  ggarrange(
+    graph_line_district$mobility_enter +
+      labs(subtitle = "Student Entrance Rate"),
+    graph_line_district$mobility_exit +
+      labs(subtitle = "Student Exit Rate"),
+    ncol = 2, nrow = 1
+  )
+} else {
+  ggarrange(
+    graph_line_state$mobility_enter +
+      labs(subtitle = "Student Entrance Rate"),
+    graph_line_state$mobility_exit +
+      labs(subtitle = "Student Exit Rate"),
+    ncol = 2, nrow = 1,
+    common.legend = T
+  )
+}
+
 ```
 \newpage
 
@@ -618,25 +1228,202 @@ The graphs below show year-to-date student mobility data *for each CSI school in
 * Note that schools are not necessarily in the same order in both graphs.
 
 ```{r graph_bar_school_mobility, fig.height=5}
-ggarrange(
-  graph_bar_school$mobility_enter +
-    labs(subtitle = "Student Entrance Rate"),
-  graph_bar_school$mobility_exit +
-    labs(subtitle = "Student Exit Rate"),
-  ncol = 1, nrow = 2
-)
+
+if(params$district > 0) {
+  ggarrange(
+    graph_bar_school$mobility_enter +
+      labs(subtitle = "Student Entrance Rate"),
+    graph_bar_school$mobility_exit +
+      labs(subtitle = "Student Exit Rate"),
+    ncol = 1, nrow = 2
+  )
+}
+
 ```
 \newpage
 
 ```{r table_school_mobility}
-table_school$mobility
+
+d <- as.character(params$district)
+
+if(params$district > 0) {
+  table_school[[d]]$mobility
+}
+
 ```
 \newpage
+
+```{r table_school_mobility_985}
+
+if(params$district == 0) {
+  table_school[["985"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_70}
+
+if(params$district == 0) {
+  table_school[["70"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_180}
+
+if(params$district == 0) {
+  table_school[["180"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_190}
+
+if(params$district == 0) {
+  table_school[["190"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_240}
+
+if(params$district == 0) {
+  table_school[["240"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_330}
+
+if(params$district == 0) {
+  table_school[["330"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_470}
+
+if(params$district == 0) {
+  table_school[["470"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_570}
+
+if(params$district == 0) {
+  table_school[["570"]][["mobility"]]
+}
+
+```
+
+```{r table_school_mobility_792}
+
+if(params$district == 0) {
+  table_school[["792"]][["mobility"]]
+}
+
+```
+
+`r if(params$district == 0) {"# Three-Year Trends in Year-to-Year Teacher Exits"}`
+
+```{r table_school_turnover_print, results="asis"}
+
+if(params$district == 0) {
+  for(d in sort(unique(schools_csi$district))) {
+    print(table_school_turnover[[as.character(d)]])
+    cat("\n\n\\pagebreak\n")
+  }
+}
+
+```
 
 # Teacher Mobility
 
 This outcome, ELA and Math Teacher Exits, is calculated as follows: ([number of teachers start-of-year] minus [number of teachers persisted this year]) divided by (number of teachers start-of-year). These calculations are done separately for ELA and Math from the data submitted by your district.
 
 ```{r table_school_teacher_exit_ela_math, fig.height=5.5}
-table_school$teacher_exit_ela_math
+
+d <- as.character(params$district)
+
+if(params$district > 0) {
+  table_school[[d]]$teacher_exit_ela_math
+} else {
+  for(d in as.character(district_list)) {
+    print(table_school[[d]]$teacher_exit_ela_math)
+  }
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_985}
+
+if(params$district == 0) {
+  table_school[["985"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_70}
+
+if(params$district == 0) {
+  table_school[["70"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_180}
+
+if(params$district == 0) {
+  table_school[["180"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_190}
+
+if(params$district == 0) {
+  table_school[["190"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_240}
+
+if(params$district == 0) {
+  table_school[["240"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_330}
+
+if(params$district == 0) {
+  table_school[["330"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_470}
+
+if(params$district == 0) {
+  table_school[["470"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_570}
+
+if(params$district == 0) {
+  table_school[["570"]][["teacher_exit_ela_math"]]
+}
+
+```
+
+```{r table_school_teacher_exit_ela_math_792}
+
+if(params$district == 0) {
+  table_school[["792"]][["teacher_exit_ela_math"]]
+}
+
 ```

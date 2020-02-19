@@ -56,4 +56,6 @@ attributes(districts_csi)$spec <- NULL
 
 # Write CSV ----
 
+if(!dir.exists("data")) dir.create("data")
+
 write_csv(schools_csi, "data/schools-csi.csv")

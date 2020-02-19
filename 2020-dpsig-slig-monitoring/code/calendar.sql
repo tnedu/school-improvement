@@ -8,4 +8,4 @@ from
   (select * from school where school_bu_id in SCHOOL IDS HERE) s
   join district d on s.district_no = d.district_no
   join scal_id_days c on s.school_bu_id = c.school_bu_id
-where c.school_year in (2018, 2019)
+where c.school_year in (2016, 2017, 2018, 2019)

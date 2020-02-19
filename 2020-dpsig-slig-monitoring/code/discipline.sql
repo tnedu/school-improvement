@@ -18,4 +18,4 @@ from
     on i.isp_id = p.isp_id
 where
   i.type_of_service = 'P'
-  and i.school_year in (2018, 2019)
+  and i.school_year in (2016, 2017, 2018, 2019)

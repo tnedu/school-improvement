@@ -1,4 +1,16 @@
-# Query school calendars ----
+library(lubridate)
+library(magrittr)
+library(openxlsx)
+library(sida)
+library(tidyverse)
+
+# Calendar data ----
+
+# List school numbers
+
+if(!exists("school_ids")) source("code/schools.R")
+
+# Query school calendars
 
 calendar <-
   dbGetQuery(
@@ -30,13 +42,37 @@ calendar_month <-
 
 calendar_all_dates <-
   tibble(
-    school_year = 2019,
+    school_year = 2017,
     id_date = seq(
       # from = calendar %>% filter(school_year == 2019) %>% extract2("id_date") %>% min(),
-      from = as_date("20180701"),
+      from = as_date("20160701"),
       # to = calendar %>% filter(school_year == 2019) %>% extract2("id_date") %>% max(),
-      to = as_date("20190630"),
+      to = as_date("20170630"),
       by = 1
+    )
+  ) %>%
+  bind_rows(
+    tibble(
+      school_year = 2018,
+      id_date = seq(
+        # from = calendar %>% filter(school_year == 2020) %>% extract2("id_date") %>% min(),
+        from = as_date("20170701"),
+        # to = calendar %>% filter(school_year == 2020) %>% extract2("id_date") %>% max(),
+        to = as_date("20180630"),
+        by = 1
+      )
+    )
+  ) %>%
+  bind_rows(
+    tibble(
+      school_year = 2019,
+      id_date = seq(
+        # from = calendar %>% filter(school_year == 2019) %>% extract2("id_date") %>% min(),
+        from = as_date("20180701"),
+        # to = calendar %>% filter(school_year == 2019) %>% extract2("id_date") %>% max(),
+        to = as_date("20190630"),
+        by = 1
+      )
     )
   ) %>%
   bind_rows(
@@ -72,7 +108,7 @@ calendar <-
   unnest()
 
 month_ends <-
-  cross_df(list("year" = 2018:2020, "calendar_month" = 1:12)) %>%
+  cross_df(list(year = 2016:2020, calendar_month = 1:12)) %>%
   mutate(
     school_year = if_else(calendar_month %in% 7:12, year + 1L, year),
     day = case_when(
@@ -85,29 +121,43 @@ month_ends <-
   select(school_year, everything()) %>%
   arrange(last_date_of_month)
 
-month_levels <-
-  c("Aug", "Sep", "Oct", "Nov", "Dec",
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun")
+month_levels <- c(
+  "Aug", "Sep", "Oct", "Nov", "Dec",
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun"
+)
 
 month_names <-
   tibble(month_number = 1:12) %>%
   mutate(month_name = month(month_number, label = T))
 
-# Query and import absence, discipline, and mobility data ----
+# Input ----
+
+# Import chronic absenteeism numbers from accountability files for previous EOY
+# measures.
 
 absence_accountability <-
-  read_csv("N:/ORP_accountability/data/2019_final_accountability_files/school_accountability_file.csv") %>%
-  filter(indicator == "Chronic Absenteeism", subgroup == "All Students") %>%
-  select(-system_name, -school_name) %>%
-  rename(district = system) %>%
-  right_join(
-    schools_csi %>% select(district, school),
-    by = c("district", "school")
+  list(
+    sy2019 = "N:/ORP_accountability/data/2019_final_accountability_files/school_accountability_file.csv",
+    sy2018 = "N:/ORP_accountability/data/2018_final_accountability_files/2018_school_accountability_file.csv"
+  ) %>%
+  imap(
+    ~ .x %>%
+      read_csv() %>%
+      filter(indicator == "Chronic Absenteeism", subgroup == "All Students") %>%
+      select(-system_name, -school_name) %>%
+      rename(district = system) %>%
+      right_join(
+        schools_csi %>% select(district, school),
+        by = c("district", "school")
+      ) %>%
+      mutate(year = as.numeric(str_replace(.y, "sy", ""))) %>%
+      select(district:designation_ineligible, year, everything())
   )
 
-# Should I include service enrollments?
+# Query absences from EIS.
 
 absence <-
+  # Should I include service enrollments?
   dbGetQuery(
     connection_eis,
     str_replace(read_file("code/absence.sql"), "SCHOOL IDS HERE", school_ids)
@@ -126,6 +176,8 @@ absence <-
     calendar %>% rename(absence_id_number = id_number),
     by = c("district", "school", "school_year", "ipn", "absence_date" = "id_date")
   )
+
+# Query disciplinary incidents from EIS.
 
 discipline <-
   dbGetQuery(
@@ -146,6 +198,8 @@ discipline <-
     calendar %>% rename(discipline_id_number = id_number),
     by = c("district", "school", "school_year", "ipn", "discipline_begin_date" = "id_date")
   )
+
+# Query enrollments to calculate mobility rates.
 
 mobility <-
   dbGetQuery(
@@ -368,10 +422,17 @@ mobility_school_month <-
 
 absence_school <-
   absence_accountability %>%
+  map(~ select(.x, district, school, metric_prior, metric)) %>%
+  reduce(
+    full_join,
+    by = c("district", "school"),
+    suffix = c("_2019", "_2018")
+  ) %>%
   transmute(
     district, school,
-    pct_students_chr_absent_2018_eoy = metric_prior,
-    pct_students_chr_absent_2019_eoy = metric,
+    pct_students_chr_absent_2017_eoy = metric_prior_2018,
+    pct_students_chr_absent_2018_eoy = metric_prior_2019,
+    pct_students_chr_absent_2019_eoy = metric_2019,
     school_rank_2019_eoy = min_rank(pct_students_chr_absent_2019_eoy),
     amo_2020_eoy = 15/16 * pct_students_chr_absent_2019_eoy
   ) %>%
@@ -394,28 +455,43 @@ absence_school <-
 
 discipline_school <-
   discipline_school_month %>%
-  filter(school_year == 2019) %>%
-  group_by(district, school) %>%
+  # Keep end-of-year numbers from previous school years.
+  filter(school_year != max(school_year)) %>%
+  group_by(district, school, school_year) %>%
   filter(last_date_of_month == max(last_date_of_month)) %>%
   ungroup() %>%
-  rename(pct_students_disciplined_2019_eoy = pct_students_disciplined) %>%
+  select(district, school, school_year, pct_students_disciplined) %>%
+  spread(school_year, pct_students_disciplined) %>%
+  rename_at(
+    vars(-district, -school),
+    funs(str_c("pct_students_disciplined_", ., "_eoy"))
+  ) %>%
+  # rename(pct_students_disciplined_2019_eoy = pct_students_disciplined) %>%
   mutate(
     school_rank_2019_eoy = min_rank(pct_students_disciplined_2019_eoy),
     amo_2020_eoy = 15/16 * pct_students_disciplined_2019_eoy
   ) %>%
   select(
     district, school,
-    pct_students_disciplined_2019_eoy, school_rank_2019_eoy, amo_2020_eoy
+    starts_with("pct_students_disciplined"), school_rank_2019_eoy, amo_2020_eoy
   ) %>%
   left_join(
     discipline_school_month %>%
-      filter(calendar_month == month_for_ytd_filter) %>%
+      filter(
+        # Include YTD measures only for the current and last school years.
+        school_year %in% c(max(school_year), max(school_year) - 1),
+        calendar_month == month_for_ytd_filter
+      ) %>%
       select(district, school, school_year, pct_students_disciplined) %>%
       spread(school_year, pct_students_disciplined) %>%
-      rename(
-        pct_students_disciplined_2019_ytd = `2019`,
-        pct_students_disciplined_2020_ytd = `2020`
+      rename_at(
+        vars(-district, -school),
+        funs(str_c("pct_students_disciplined_", ., "_ytd"))
       ) %>%
+      # rename(
+      #   pct_students_disciplined_2019_ytd = `2019`,
+      #   pct_students_disciplined_2020_ytd = `2020`
+      # ) %>%
       mutate(
         school_rank_2020_ytd = min_rank(pct_students_disciplined_2020_ytd),
         amo_2020_on_track = pct_students_disciplined_2020_ytd <= 15/16 * pct_students_disciplined_2019_ytd
@@ -425,28 +501,44 @@ discipline_school <-
   arrange(school)
 
 mobility_school <-
-  mobility_school_month %>%
-  filter(school_year == 2019) %>%
-  group_by(district, school) %>%
-  filter(last_date_of_month == max(last_date_of_month)) %>%
-  ungroup() %>%
-  rename(
-    pct_students_entered_2019_eoy = pct_students_entered,
-    pct_students_exited_2019_eoy = pct_students_exited
+  map2(
+    .x = quos(pct_students_entered, pct_students_exited),
+    .y = c("entered_", "exited_"),
+    ~ mobility_school_month %>%
+      # Keep end-of-year numbers from previous school years.
+      filter(school_year != max(school_year)) %>%
+      group_by(district, school, school_year) %>%
+      filter(last_date_of_month == max(last_date_of_month)) %>%
+      ungroup() %>%
+      select(district, school, school_year, !!.x) %>%
+      spread(school_year, !!.x) %>%
+      rename_at(
+        vars(-district, -school),
+        funs(str_c("pct_students_", .y, ., "_eoy"))
+      )
   ) %>%
+  reduce(full_join, by = c("district", "school")) %>%
+  # rename(
+  #   pct_students_entered_2019_eoy = pct_students_entered,
+  #   pct_students_exited_2019_eoy = pct_students_exited
+  # ) %>%
   mutate(
     school_rank_entered_2019_eoy = min_rank(pct_students_entered_2019_eoy),
     school_rank_exited_2019_eoy = min_rank(pct_students_exited_2019_eoy)
     # amo_2020_eoy = 15/16 * pct_students_entered_2019_eoy
   ) %>%
-  select(
-    district, school,
-    pct_students_entered_2019_eoy, school_rank_entered_2019_eoy, # amo_2020_eoy
-    pct_students_exited_2019_eoy, school_rank_exited_2019_eoy
-  ) %>%
+  # select(
+  #   district, school,
+  #   pct_students_entered_2019_eoy, school_rank_entered_2019_eoy, # amo_2020_eoy
+  #   pct_students_exited_2019_eoy, school_rank_exited_2019_eoy
+  # ) %>%
   left_join(
     mobility_school_month %>%
-      filter(calendar_month == month_for_ytd_filter) %>%
+      filter(
+        # Include YTD measures only for the current and last school years.
+        school_year %in% c(max(school_year), max(school_year) - 1),
+        calendar_month == month_for_ytd_filter
+      ) %>%
       select(district, school, school_year, pct_students_entered) %>%
       spread(school_year, pct_students_entered) %>%
       rename(
@@ -461,7 +553,11 @@ mobility_school <-
   ) %>%
   left_join(
     mobility_school_month %>%
-      filter(calendar_month == month_for_ytd_filter) %>%
+      filter(
+        # Include YTD measures only for the current and last school years.
+        school_year %in% c(max(school_year), max(school_year) - 1),
+        calendar_month == month_for_ytd_filter
+      ) %>%
       select(district, school, school_year, pct_students_exited) %>%
       spread(school_year, pct_students_exited) %>%
       rename(
@@ -474,7 +570,7 @@ mobility_school <-
       ),
     by = c("district", "school")
   ) %>%
-  arrange(school)
+  arrange(district, school)
 
 # Summarize (district by month, YTD) ----
 
