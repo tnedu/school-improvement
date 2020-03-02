@@ -1,9 +1,9 @@
 ---
 params:
-  district: 0
+  district: 792
   district_name: "State-Level Users"
   data_file_date: !r lubridate::today()
-  directory_project: ""
+  directory_project: "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/projects-master/school-improvement/2020-dpsig-slig-monitoring"
   report_date: !r format(lubridate::today(), "%B %d, %Y")
   teacher_file_date: !r lubridate::today()
   teacher_file_month: "-2019-12"
@@ -198,7 +198,11 @@ if(params$district > 0) {
     ) %>%
     map(
       ~ .x %>%
-        filter(district == params$district) %>%
+        filter(
+          district == params$district,
+          # Parameterize this filter command.
+          str_detect(measure_name, "2019|2020")
+        ) %>%
         mutate_at(
           "calendar_month",
           funs(factor(., levels = c(8:12, 1:6), labels = month_levels))
@@ -269,7 +273,7 @@ if(params$district > 0) {
     ) %>%
     set_names(nm = c("absence", "discipline", "mobility_enter", "mobility_exit"))
   
-  # walk(graph_line_district, print)
+  walk(graph_line_district, print)
   
 }
 
