@@ -45,6 +45,7 @@ report_month <- str_c("-", month_folder)
 
 file.edit("code/monthly-teacher-data.R")
 source("code/monthly-eis-data.R")
+source("code/teacher-turnover.R")
 
 # Render reports ----
 
@@ -84,12 +85,12 @@ render_reports <-
 walk2(
   .x = districts_csi$district,
   .y = districts_csi$district_name,
-  ~ render_reports(.x, .y, data_file_date_arg = "2020-02-03")
+  ~ render_reports(.x, .y, data_file_date_arg = "2020-03-02") # , directory_project = "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/projects-master/school-improvement/2020-dpsig-slig-monitoring")
 )
 
 render_reports(
-  0, "State-Level Users",
-  data_file_date_arg = "2020-02-05", teacher_file_date_arg = "2020-02-04"
+  0, "State-Level Users"
+  # data_file_date_arg = "2020-02-05", teacher_file_date_arg = "2020-02-04"
 )
 
 # Clean up ----
