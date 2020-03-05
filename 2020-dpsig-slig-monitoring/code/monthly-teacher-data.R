@@ -661,6 +661,142 @@ if(str_detect(month_folder, "-01$")) {
   
 }
 
+# Import February teacher data ----
+
+if(str_detect(month_folder, "-02$")) {
+  
+  # Check sheet names.
+  (sheet_names <- teacher_last_month_paths %>% map(getSheetNames))
+  
+  # Select sheets to import.
+  (sheet_names <-
+      sheet_names %>%
+      map(~ .x[str_detect(.x, "Teachers|Sheet1")]) %>%
+      unlist())
+  
+  # Read data.
+  
+  teacher_last_month_import <-
+    teacher_last_month_paths %>%
+    map2(
+      sheet_names,
+      ~ .x %>%
+        read.xlsx(sheet = .y) %>%
+        janitor::clean_names() %>%
+        mutate_at(vars(first_instructional_date, current_date), convertToDate)
+    )
+  
+  # Check variable names.
+  
+  map(teacher_last_month_import, ~ all(names(.x) == variable_names))
+  
+  teacher_last_month_import %>%
+    map_if(.p = ~ !all(names(.x) == variable_names), .f = names) %>%
+    keep(is_character)
+  
+  # Check inconsistent variable types.
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_start_of_year))
+  
+  teacher_last_month_import %>%
+    keep(~ is.character(.x$number_of_teachers_start_of_year)) %>%
+    map(~ sort(unique(.x$number_of_teachers_start_of_year)))
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_persisted_this_year))
+  
+  teacher_last_month_import %>%
+    keep(~ is.character(.x$number_of_teachers_persisted_this_year)) %>%
+    map(~ sort(unique(.x$number_of_teachers_persisted_this_year)))
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_gained_this_year))
+  map(teacher_last_month_import, ~ class(.x$number_of_unendorsed_teachers))
+  map(teacher_last_month_import, ~ class(.x$number_of_long_term_substitutes))
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teachers_chronically_absent))
+  
+  teacher_last_month_import %>%
+    keep(~ is.character(.x$number_of_teachers_chronically_absent)) %>%
+    map(~ sort(unique(.x$number_of_teachers_chronically_absent)))
+  
+  map(teacher_last_month_import, ~ class(.x$number_of_teacher_observations))
+  
+  teacher_last_month_import %>%
+    keep(~ is.character(.x$number_of_teacher_observations)) %>%
+    map(~ sort(unique(.x$number_of_teacher_observations)))
+  
+  # Check district and school numbers.
+  # Geeter School in Shelby County should have school number 2245, not 2240.
+  
+  teacher_last_month_import %>%
+    keep(~ any(str_detect(names(.x), "district_number"))) %>%
+    map(~ summarize_at(.x, vars(district_number), funs(mean(is.na(.)))))
+  
+  map(
+    teacher_last_month_import,
+    ~ summarize_at(.x, vars(school_number), funs(mean(is.na(.))))
+  )
+  
+  teacher_last_month_import %>%
+    keep(~ sum(is.na(.x$school_number)) > 0) %>%
+    map(
+      ~ .x %>%
+        filter(is.na(school_number))
+    )
+  
+  teacher_last_month_import %>%
+    keep(~ max(.x[["district_number"]], na.rm = T) == 792) %>%
+    pluck(1) %>%
+    filter(school_number %in% c(2240, 2245)) %>%
+    select(school_number)
+  
+  # Fix issues.
+  
+  teacher_last_month <-
+    teacher_last_month_import %>%
+    map_at(
+      2, ~ .x %>%
+        mutate(district_number = 180) %>%
+        select(district_number, everything())
+    ) %>%
+    # map_at(
+    #   3, ~ .x %>%
+    #     mutate_at(
+    #       vars(matches("teachers|substitutes")),
+    #       as.numeric
+    #     ) %>%
+    #     mutate_at(
+    #       "number_of_teacher_observations",
+    #       funs(
+    #         str_extract_all(., "\\d+", simplify = T) %>%
+    #           apply(1:2, as.numeric) %>%
+    #           rowSums(na.rm = T)
+    #       )
+    #     )
+    # ) %>%
+    map_at(
+      5, ~ .x %>% # 6
+        mutate(number_of_teacher_observations = 81)
+    ) %>%
+    map_at(
+      7, ~ .x %>% # 8
+        filter(!is.na(school_number)) %>%
+        mutate_at(vars(starts_with("num")), as.numeric) %>%
+        mutate(district_number = 792)
+    ) %>%
+    map_at(8, ~ .x %>% select(-x14)) %>% # 9
+    map(
+      ~ .x %>%
+        mutate_at(vars(district_number, school_number), as.numeric) %>%
+        select(-school_name) %>%
+        rename(district = district_number, school = school_number) %>%
+        inner_join(schools_csi %>% select(-bu_id), by = c("district", "school")) %>%
+        select(district, district_name, school, school_name, everything())
+    ) %>%
+    reduce(bind_rows) %>%
+    arrange(district_name, school_name, content_area, desc(current_date))
+  
+}
+
 # Check teacher data ----
 
 # Check for schools with more than four observations. Such schools might
