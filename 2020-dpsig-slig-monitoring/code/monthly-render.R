@@ -18,9 +18,16 @@ connection_eis <-
     "EIS_MGR", Sys.getenv("eis_password")
   )
 
-# Parameters ----
+# Parameters (manual) ----
+
+# It's unclear if we need the last date of month_for_ytd_filter to filter EIS
+# data. month_for_ytd_filter might already suffice.
 
 current_school_year <- 2020
+
+month_for_ytd_filter <- 2
+
+# Parameters ----
 
 directory_current <- getwd()
 
@@ -28,8 +35,6 @@ directory_master <- str_c(
   Sys.getenv("tnshare_data_use"), "/",
   "projects-master/school-improvement/2020-dpsig-slig-monitoring/"
 )
-
-month_for_ytd_filter <- 1
 
 if(month_for_ytd_filter > 7) {
   if(month_for_ytd_filter < 10) separator <- "-0" else separator <- "-"
@@ -85,7 +90,10 @@ render_reports <-
 walk2(
   .x = districts_csi$district,
   .y = districts_csi$district_name,
-  ~ render_reports(.x, .y, data_file_date_arg = "2020-03-02") # , directory_project = "C:/Users/CA20397/TN Dept of Education/Data Use Team - Documents/projects-master/school-improvement/2020-dpsig-slig-monitoring")
+  ~ render_reports(
+    .x, .y
+    # data_file_date_arg = today()
+  )
 )
 
 render_reports(
