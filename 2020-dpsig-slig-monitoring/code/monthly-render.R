@@ -91,14 +91,16 @@ walk2(
   .x = districts_csi$district,
   .y = districts_csi$district_name,
   ~ render_reports(
-    .x, .y
-    # data_file_date_arg = today()
+    .x, .y,
+    data_file_date_arg = "2020-03-02",
+    teacher_file_date_arg = "2020-03-02"
   )
 )
 
 render_reports(
-  0, "State-Level Users"
-  # data_file_date_arg = "2020-02-05", teacher_file_date_arg = "2020-02-04"
+  0, "State-Level Users",
+  data_file_date_arg = "2020-03-02",
+  teacher_file_date_arg = "2020-03-02"
 )
 
 # Clean up ----
